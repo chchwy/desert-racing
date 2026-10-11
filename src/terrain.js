@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { fbm } from './noise.js';
 import { buildChunkProps } from './props.js';
+import { buildChunkCoins, collectChunkCoins, updateChunkCoins } from './coins.js';
 
 export const CHUNK_SIZE = 200;
 const CHUNK_SEGMENTS = 64;
@@ -174,14 +175,27 @@ export class Terrain {
 
     const props = buildChunkProps(cx, cz, CHUNK_SIZE, heightAt);
     this.scene.add(props.group);
+    const coins = buildChunkCoins(cx, cz, CHUNK_SIZE, heightAt, props.colliders);
+    this.scene.add(coins.group);
 
-    return { mesh, props };
+    return { mesh, props, coins };
   }
 
   disposeChunk(chunk) {
     this.scene.remove(chunk.mesh);
     chunk.mesh.geometry.dispose();
     this.scene.remove(chunk.props.group);
+    this.scene.remove(chunk.coins.group);
+  }
+
+  updateCoins(time) {
+    for (const chunk of this.chunks.values()) updateChunkCoins(chunk.coins.list, time);
+  }
+
+  collectCoins(prev, pos) {
+    let gained = 0;
+    for (const chunk of this.chunks.values()) gained += collectChunkCoins(chunk.coins.list, prev, pos);
+    return gained;
   }
 
   update(position, force = false) {

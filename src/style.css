@@ -19,6 +19,26 @@ html, body {
 .headline { font-size: 34px; font-weight: 600; letter-spacing: 0.08em; margin-top: 6px; }
 .sub { font-size: 11px; letter-spacing: 0.12em; opacity: 0.8; margin-top: 8px; }
 
+.coin-count {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px; font-size: 15px; letter-spacing: 0.16em; color: #ffe7a8;
+}
+.coin-count b {
+  font-weight: 500; font-size: 26px; letter-spacing: 0; color: #fff6d2;
+  font-variant-numeric: tabular-nums; display: inline-block;
+}
+.coin-disc {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff1b0, #f0b429 46%, #a86b12);
+  box-shadow: 0 0 8px rgba(240, 180, 40, 0.85);
+}
+.coin-count.pop b { animation: coin-pop 0.35s ease; }
+@keyframes coin-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
 .energy {
   position: absolute; left: 50%; top: 2.2vh; width: 180px; height: 3px; transform: translateX(-50%);
   background: rgba(255,255,255,0.25);

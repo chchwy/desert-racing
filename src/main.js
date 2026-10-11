@@ -6,6 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 
 import { Terrain, heightAt } from './terrain.js';
+import { coinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
@@ -104,12 +105,15 @@ const hud = {
   state: document.getElementById('state'),
   energy: document.getElementById('energy'),
   fps: document.getElementById('fps'),
+  coins: document.getElementById('coins'),
+  coinCount: document.getElementById('coin-count'),
 };
 
 // ------------------------------------------------------------------ loop ----
 const timer = new THREE.Timer();
 timer.connect(document);
 const tips = [new THREE.Vector3(), new THREE.Vector3()];
+const prevPos = new THREE.Vector3();
 const nozzles = [new THREE.Vector3(), new THREE.Vector3()];
 let emitAcc = 0;
 let fpsAcc = 0;
@@ -154,6 +158,7 @@ function frame(timestamp) {
   if (input.hit('KeyC')) chase.cycle();
   if (input.hit('KeyR')) player.reset();
 
+  prevPos.copy(player.pos);
   // two physics substeps for stable hovering at high speed
   const colliders = terrain.collidersNear(player.pos.x, player.pos.z);
   for (let i = 0; i < 2; i++) {
@@ -161,6 +166,14 @@ function frame(timestamp) {
     if (i === 0) input.pressed.delete('Space');
   }
   terrain.update(player.pos);
+  const gained = terrain.collectCoins(prevPos, player.pos);
+  if (gained) {
+    hud.coins.textContent = String(coinCount());
+    hud.coinCount.classList.remove('pop');
+    void hud.coinCount.offsetWidth;
+    hud.coinCount.classList.add('pop');
+  }
+  terrain.updateCoins(time);
 
   // bike transform
   bike.root.position.copy(player.pos);
