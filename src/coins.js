@@ -1,12 +1,18 @@
 import * as THREE from 'three';
 
 const TOTAL = 100;
-const GAP = 32;
-const COIN_R = 2.55; // 5.1 m across, about the length of a car
-const COIN_LIFT = COIN_R + 0.85; // bottom sits just above the sand
-const PICKUP_R = COIN_R + 1.7;
-const Y_REACH = 4.5;
-const CLEAR = COIN_R + 2.2;
+// 2.8 km across: wider than the stretch of desert the fog used to show (~1.9 km),
+// and far larger than the cat (~1.9 m).
+export const COIN_R = 1400;
+const COIN_THICK = 120;
+const RIM_GAP = 480;
+const GAP = COIN_R * 2 + RIM_GAP;
+const AHEAD = COIN_R + 360; // near rim sits ahead of spawn; pyramids stay outside the disc
+const COIN_LIFT = COIN_R + 6; // bottom sits just above the sand
+const PICKUP_R = COIN_R + 12;
+const Y_REACH = COIN_LIFT + 40; // center is one radius up; a ground bike must still reach it
+const HUB = 8;
+const SPIN = 0.1;
 
 // Same basis as the bike's initial yaw (player.yaw = 0.9):
 // forward (sin yaw, cos yaw), right (-forward.z, forward.x).
@@ -16,15 +22,15 @@ const FZ = Math.cos(YAW);
 const RX = -FZ;
 const RZ = FX;
 
-const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, 0.5, 28);
+const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_THICK, 80);
 coinGeo.rotateX(Math.PI / 2);
 
 const gold = new THREE.MeshStandardMaterial({
   color: new THREE.Color().setRGB(0.95, 0.72, 0.22, THREE.SRGBColorSpace),
-  metalness: 0.72,
-  roughness: 0.32,
-  emissive: new THREE.Color().setRGB(0.55, 0.28, 0.04, THREE.SRGBColorSpace),
-  emissiveIntensity: 0.65,
+  metalness: 0.42,
+  roughness: 0.4,
+  emissive: new THREE.Color().setRGB(0.72, 0.42, 0.08, THREE.SRGBColorSpace),
+  emissiveIntensity: 1,
 });
 
 const collected = new Set();
@@ -38,7 +44,7 @@ export function coinCount() {
 // off the nose so it clears the pyramid group at (149, 118).
 function pointAt(u) {
   const lat = Math.sin(u * 0.0034) * 340 + Math.sin(u * 0.011 + Math.PI) * 28;
-  const along = 48 + u;
+  const along = AHEAD + u;
   return [FX * along + RX * lat, FZ * along + RZ * lat];
 }
 
@@ -69,11 +75,10 @@ function xy(p) {
 
 export const coinPath = buildPath();
 
-function nearestSolid(colliders, x, z, y) {
-  const bottom = y - COIN_R;
+function nearestHub(colliders, x, z) {
   let best = null;
   for (const c of colliders) {
-    if (c.top < bottom) continue;
+    if (c.top < 1) continue;
     const dx = x - c.x;
     const dz = z - c.z;
     const dist = Math.hypot(dx, dz);
@@ -83,15 +88,15 @@ function nearestSolid(colliders, x, z, y) {
   return best;
 }
 
-// Slide a coin off a ruin so the trail stays collectible without leaving the line.
-function nudge(x, z, colliders, heightAt) {
+// The disc dwarfs ruins. Only slide the hub out of a solid it is actually sitting in.
+function nudge(x, z, colliders) {
   let px = x;
   let pz = z;
   for (let n = 0; n < 6; n++) {
-    const hit = nearestSolid(colliders, px, pz, heightAt(px, pz) + COIN_LIFT);
-    if (!hit || hit.gap >= CLEAR) break;
+    const hit = nearestHub(colliders, px, pz);
+    if (!hit || hit.gap >= HUB) break;
     const dist = Math.max(hit.dist, 0.001);
-    const push = CLEAR + 0.4 - hit.gap;
+    const push = HUB + 0.4 - hit.gap;
     px += (hit.dx / dist) * push;
     pz += (hit.dz / dist) * push;
   }
@@ -119,7 +124,7 @@ export function buildChunkCoins(cx, cz, size, heightAt, colliders) {
     if (Math.floor(spot.x / size) !== cx || Math.floor(spot.z / size) !== cz) continue;
     const id = 'path:' + spot.i;
     if (collected.has(id)) continue;
-    const moved = nudge(spot.x, spot.z, colliders, heightAt);
+    const moved = nudge(spot.x, spot.z, colliders);
     const y = heightAt(moved.x, moved.z) + COIN_LIFT;
     const phase = spot.i * 0.55;
     const mesh = new THREE.Mesh(coinGeo, gold);
@@ -135,8 +140,8 @@ export function buildChunkCoins(cx, cz, size, heightAt, colliders) {
 export function updateChunkCoins(list, time) {
   for (const coin of list) {
     if (coin.taken) continue;
-    coin.mesh.rotation.y = time * 2.4 + coin.phase;
-    coin.mesh.position.y = coin.baseY + Math.sin(time * 2.1 + coin.phase) * 0.35;
+    coin.mesh.rotation.y = time * SPIN + coin.phase;
+    coin.mesh.position.y = coin.baseY + Math.sin(time * 0.45 + coin.phase) * 10;
   }
 }
 

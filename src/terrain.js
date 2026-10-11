@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { fbm } from './noise.js';
 import { buildChunkProps } from './props.js';
-import { buildChunkCoins, collectChunkCoins, updateChunkCoins } from './coins.js';
+import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinPath, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
 const CHUNK_SEGMENTS = 64;
@@ -213,6 +213,25 @@ export class Terrain {
           const k = this.key(cx + dx, cz + dz);
           wanted.add(k);
           if (!this.chunks.has(k)) pending.push({ cx: cx + dx, cz: cz + dz, d: dx * dx + dz * dz, k });
+        }
+      }
+      // A coin wider than the view lives in a far chunk. Keep that chunk while its disc
+      // reaches the player, or the mesh never loads and then pops out from underneath.
+      const coinReach = (VIEW_RADIUS + 0.5) * CHUNK_SIZE + COIN_R;
+      const coinReach2 = coinReach * coinReach;
+      for (const spot of coinPath) {
+        const sdx = spot.x - position.x;
+        const sdz = spot.z - position.z;
+        if (sdx * sdx + sdz * sdz > coinReach2) continue;
+        const sx = Math.floor(spot.x / CHUNK_SIZE);
+        const sz = Math.floor(spot.z / CHUNK_SIZE);
+        const sk = this.key(sx, sz);
+        if (wanted.has(sk)) continue;
+        wanted.add(sk);
+        if (!this.chunks.has(sk)) {
+          const cdx = sx - cx;
+          const cdz = sz - cz;
+          pending.push({ cx: sx, cz: sz, d: cdx * cdx + cdz * cdz, k: sk });
         }
       }
       for (const [k, chunk] of this.chunks) {

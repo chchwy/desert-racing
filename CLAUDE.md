@@ -37,6 +37,12 @@ Steer is positive to the rider's left, the same sign as KeyA. A standard pad's a
 
 RT or left-stick up throttles, LT or left-stick down brakes, the left stick and d-pad steer, A jumps, X or LB holds boost, Y cycles the camera, the right stick orbits, Menu resets. Analog throttle uses the existing thrust term. Chrome hides the pad until the page is focused and a button has been pressed.
 
+## Coins
+
+`src/coins.js` lays exactly 100 coins on one bowed trail. Each disc is 2.8 km across (`COIN_R` 1400), wider than the desert the old fog distance could show, so the cat and the pyramids read as small. The center is lifted by the radius (`COIN_LIFT`) or the bottom sinks into the sand, and `Y_REACH` has to cover that lift or a bike on the ground cannot collect. Do not put a second copy of either number in `player.js`.
+
+The mesh is owned by the chunk under the coin's center. `Terrain.update` also keeps that chunk while the disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim so the disc is not clipped into haze. Nudge only slides the hub out of a solid; pushing by the full radius throws the coin off the trail.
+
 ## Frame
 
 Bike space is **+Z forward, +Y up, +X to the rider's left**. This is not three.js's default Object3D forward of −Z.

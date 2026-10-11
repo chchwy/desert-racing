@@ -24,9 +24,9 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(HAZE_COLOR, 160, 950);
+scene.fog = new THREE.Fog(HAZE_COLOR, 240, 6400);
 
-const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 3000);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.4, 8000);
 
 // ----------------------------------------------------------------- light ----
 const hemi = new THREE.HemisphereLight(0xbcd6f0, 0xd9b98a, 0.6);
