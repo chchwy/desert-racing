@@ -17,6 +17,23 @@ const stoneDark = new THREE.MeshStandardMaterial({
   roughness: 1,
   flatShading: true,
 });
+const limestone = new THREE.MeshStandardMaterial({
+  color: new THREE.Color().setRGB(0.84, 0.76, 0.62, THREE.SRGBColorSpace),
+  roughness: 0.9,
+  flatShading: true,
+});
+const limestoneDark = new THREE.MeshStandardMaterial({
+  color: new THREE.Color().setRGB(0.7, 0.6, 0.46, THREE.SRGBColorSpace),
+  roughness: 0.97,
+  flatShading: true,
+});
+// rotation.y = yaw sends local +x to (cos yaw, 0, -sin yaw) and local +z to (sin yaw, 0, cos yaw).
+// Meshes and pyramid colliders both go through this, so a face and its collider share one basis.
+function yawOffset(yaw, lx, lz) {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  return [lx * c + lz * s, -lx * s + lz * c];
+}
 
 function addMesh(group, geo, mat, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
   const m = new THREE.Mesh(geo, mat);
@@ -111,6 +128,67 @@ function statue(group, colliders, rng, x, z, heightAt) {
   }
 }
 
+// Four circles cover a yaw-aligned square of half-width `half`.
+// Each circle is tangent to two edges and one corner, so the stone is blocked
+// and the extra reach past a face stays about 0.2 * half.
+function addSquareCollider(colliders, x, z, yaw, half, top) {
+  const a = half / 2;
+  const r = a * Math.SQRT2;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const [ox, oz] = yawOffset(yaw, sx * a, sz * a);
+      colliders.push({ x: x + ox, z: z + oz, r, top });
+    }
+  }
+}
+
+function addPyramid(group, colliders, x, z, side, height, yaw, heightAt) {
+  const plinthH = 1.7;
+  const plinthSide = side * 1.12;
+  const gy = groundMin(heightAt, x, z, plinthSide * 0.72) - 1.8;
+  addMesh(group, boxGeo, limestoneDark, x, gy + plinthH / 2, z, plinthSide, plinthH, plinthSide, yaw);
+
+  // ConeGeometry corners sit on the axes. yaw - PI/4 swings them onto the base corners.
+  const capR = (side / 2) * Math.SQRT2;
+  addMesh(
+    group, coneGeo, limestone,
+    x, gy + plinthH + height / 2 - 0.15, z,
+    capR, height + 0.15, capR,
+    yaw - Math.PI / 4,
+  );
+
+  // Cylinders block everything below `top`. Upper bands are narrower, matching the taper.
+  const bands = 5;
+  for (let i = 0; i < bands; i++) {
+    const y0 = (i / bands) * height;
+    const half = i === 0 ? plinthSide / 2 : (side * (1 - y0 / height)) / 2;
+    const top = gy + plinthH + ((i + 1) / bands) * height;
+    addSquareCollider(colliders, x, z, yaw, Math.max(half, 1.5), top);
+  }
+}
+
+function pyramidCluster(group, colliders, rng, x, z, heightAt, yaw = rng() * Math.PI * 2) {
+  const n = rng() < 0.72 ? 3 : 2;
+  const mainH = 32 + rng() * 16;
+  const heights = [mainH];
+  for (let i = 1; i < n; i++) heights.push(mainH * (0.46 + rng() * 0.18));
+  if (n === 3) {
+    const main = heights[0];
+    heights[0] = heights[1];
+    heights[1] = main;
+  }
+  const sides = heights.map((h) => h * 1.58);
+  const gap = 7 + rng() * 5;
+  const total = sides.reduce((a, b) => a + b, 0) + gap * (n - 1);
+  let cursor = -total / 2;
+  for (let i = 0; i < n; i++) {
+    const lx = cursor + sides[i] / 2;
+    cursor += sides[i] + gap;
+    const [ox, oz] = yawOffset(yaw, lx, (i - (n - 1) / 2) * 2);
+    addPyramid(group, colliders, x + ox, z + oz, sides[i], heights[i], yaw, heightAt);
+  }
+}
+
 function rocks(group, colliders, rng, x, z, heightAt) {
   const n = 2 + Math.floor(rng() * 5);
   for (let i = 0; i < n; i++) {
@@ -123,21 +201,46 @@ function rocks(group, colliders, rng, x, z, heightAt) {
   }
 }
 
+// Ahead of the start, on a flat patch at about the same height as the spawn.
+const LANDMARK_X = 149;
+const LANDMARK_Z = 118;
+const LANDMARK_CLEAR = 105;
+
 export function buildChunkProps(cx, cz, size, heightAt) {
   const group = new THREE.Group();
   const colliders = [];
   const rng = mulberry32(hashSeed(cx + 1000, cz - 1000));
+
+  if (cx === 0 && cz === 0) {
+    pyramidCluster(
+      group, colliders, mulberry32(hashSeed(11, 19)),
+      LANDMARK_X, LANDMARK_Z, heightAt,
+      Math.atan2(-LANDMARK_X, -LANDMARK_Z),
+    );
+  }
 
   const count = rng() < 0.55 ? 1 + Math.floor(rng() * 2) : 0;
   for (let i = 0; i < count; i++) {
     const x = cx * size + 20 + rng() * (size - 40);
     const z = cz * size + 20 + rng() * (size - 40);
     if (Math.hypot(x, z) < 60) continue; // keep spawn clear
+    if ((x - LANDMARK_X) ** 2 + (z - LANDMARK_Z) ** 2 < LANDMARK_CLEAR ** 2) continue;
     const roll = rng();
     if (roll < 0.35) pillars(group, colliders, rng, x, z, heightAt);
     else if (roll < 0.6) rocks(group, colliders, rng, x, z, heightAt);
     else if (roll < 0.88) ruinBuilding(group, colliders, rng, x, z, heightAt);
     else statue(group, colliders, rng, x, z, heightAt);
+  }
+
+  // Further clusters, far enough apart that two groups don't grow through each other.
+  if (!(cx === 0 && cz === 0) && rng() < 0.09) {
+    const x = cx * size + 46 + rng() * (size - 92);
+    const z = cz * size + 46 + rng() * (size - 92);
+    const dx = x - LANDMARK_X;
+    const dz = z - LANDMARK_Z;
+    if (Math.hypot(x, z) > 280 && dx * dx + dz * dz > 320 * 320) {
+      pyramidCluster(group, colliders, rng, x, z, heightAt);
+    }
   }
   return { group, colliders };
 }
