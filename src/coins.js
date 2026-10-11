@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 
 const TOTAL = 100;
-const GAP = 10;
-const PICKUP_R = 3.3;
-const Y_REACH = 2.2;
+const GAP = 32;
+const COIN_R = 2.55; // 5.1 m across, about the length of a car
+const COIN_LIFT = COIN_R + 0.85; // bottom sits just above the sand
+const PICKUP_R = COIN_R + 1.7;
+const Y_REACH = 4.5;
+const CLEAR = COIN_R + 2.2;
 
 // Same basis as the bike's initial yaw (player.yaw = 0.9):
 // forward (sin yaw, cos yaw), right (-forward.z, forward.x).
@@ -13,7 +16,7 @@ const FZ = Math.cos(YAW);
 const RX = -FZ;
 const RZ = FX;
 
-const coinGeo = new THREE.CylinderGeometry(0.95, 0.95, 0.12, 24);
+const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, 0.5, 28);
 coinGeo.rotateX(Math.PI / 2);
 
 const gold = new THREE.MeshStandardMaterial({
@@ -67,9 +70,10 @@ function xy(p) {
 export const coinPath = buildPath();
 
 function nearestSolid(colliders, x, z, y) {
+  const bottom = y - COIN_R;
   let best = null;
   for (const c of colliders) {
-    if (y > c.top) continue;
+    if (c.top < bottom) continue;
     const dx = x - c.x;
     const dz = z - c.z;
     const dist = Math.hypot(dx, dz);
@@ -84,10 +88,10 @@ function nudge(x, z, colliders, heightAt) {
   let px = x;
   let pz = z;
   for (let n = 0; n < 6; n++) {
-    const hit = nearestSolid(colliders, px, pz, heightAt(px, pz) + 1.45);
-    if (!hit || hit.gap >= 4) break;
+    const hit = nearestSolid(colliders, px, pz, heightAt(px, pz) + COIN_LIFT);
+    if (!hit || hit.gap >= CLEAR) break;
     const dist = Math.max(hit.dist, 0.001);
-    const push = 4.5 - hit.gap;
+    const push = CLEAR + 0.4 - hit.gap;
     px += (hit.dx / dist) * push;
     pz += (hit.dz / dist) * push;
   }
@@ -116,7 +120,7 @@ export function buildChunkCoins(cx, cz, size, heightAt, colliders) {
     const id = 'path:' + spot.i;
     if (collected.has(id)) continue;
     const moved = nudge(spot.x, spot.z, colliders, heightAt);
-    const y = heightAt(moved.x, moved.z) + 1.45;
+    const y = heightAt(moved.x, moved.z) + COIN_LIFT;
     const phase = spot.i * 0.55;
     const mesh = new THREE.Mesh(coinGeo, gold);
     mesh.position.set(moved.x, y, moved.z);
@@ -132,7 +136,7 @@ export function updateChunkCoins(list, time) {
   for (const coin of list) {
     if (coin.taken) continue;
     coin.mesh.rotation.y = time * 2.4 + coin.phase;
-    coin.mesh.position.y = coin.baseY + Math.sin(time * 2.1 + coin.phase) * 0.22;
+    coin.mesh.position.y = coin.baseY + Math.sin(time * 2.1 + coin.phase) * 0.35;
   }
 }
 
