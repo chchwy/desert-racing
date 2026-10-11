@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { heightAt, normalAt } from './terrain.js';
+import { readGamepad } from './gamepad.js';
 
 const G = 26;
 const G_AIR = 34; // heavier when airborne so crest jumps stay readable
@@ -12,10 +13,21 @@ const VMAX_BOOST = 72; // ~260 km/h
 
 const tmpN = new THREE.Vector3();
 
+const PAD_IDLE = {
+  throttle: 0,
+  brake: 0,
+  steer: 0,
+  boost: false,
+  lookX: 0,
+  lookY: 0,
+};
+
 export class Input {
   constructor() {
     this.keys = new Set();
     this.pressed = new Set();
+    this.pad = { ...PAD_IDLE };
+    this._padHeld = { jump: false, camera: false, reset: false };
     addEventListener('keydown', (e) => {
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
@@ -29,6 +41,31 @@ export class Input {
   }
   hit(code) {
     return this.pressed.has(code);
+  }
+  poll() {
+    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    let chosen = null;
+    for (const pad of pads) {
+      if (!pad || !pad.connected) continue;
+      if (pad.mapping === 'standard') {
+        chosen = pad;
+        break;
+      }
+      if (!chosen) chosen = pad;
+    }
+    const snap = readGamepad(chosen);
+    this.pad.throttle = snap.throttle;
+    this.pad.brake = snap.brake;
+    this.pad.steer = snap.steer;
+    this.pad.boost = snap.boost;
+    this.pad.lookX = snap.lookX;
+    this.pad.lookY = snap.lookY;
+    if (snap.jump && !this._padHeld.jump) this.pressed.add('Space');
+    if (snap.camera && !this._padHeld.camera) this.pressed.add('KeyC');
+    if (snap.reset && !this._padHeld.reset) this.pressed.add('KeyR');
+    this._padHeld.jump = snap.jump;
+    this._padHeld.camera = snap.camera;
+    this._padHeld.reset = snap.reset;
   }
   endFrame() {
     this.pressed.clear();
@@ -70,10 +107,12 @@ export class Player {
   }
 
   update(dt, input, colliders) {
-    const fwdIn = input.down('KeyW', 'ArrowUp') ? 1 : 0;
-    const back = input.down('KeyS', 'ArrowDown') ? 1 : 0;
-    const steer = (input.down('KeyA', 'ArrowLeft') ? 1 : 0) - (input.down('KeyD', 'ArrowRight') ? 1 : 0);
-    const wantBoost = input.down('ShiftLeft', 'ShiftRight') && fwdIn && this.energy > 0.02;
+    const pad = input.pad ?? PAD_IDLE;
+    const fwdIn = Math.max(input.down('KeyW', 'ArrowUp') ? 1 : 0, pad.throttle);
+    const back = Math.max(input.down('KeyS', 'ArrowDown') ? 1 : 0, pad.brake);
+    const keySteer = (input.down('KeyA', 'ArrowLeft') ? 1 : 0) - (input.down('KeyD', 'ArrowRight') ? 1 : 0);
+    const steer = THREE.MathUtils.clamp(keySteer + pad.steer, -1, 1);
+    const wantBoost = (input.down('ShiftLeft', 'ShiftRight') || pad.boost) && fwdIn > 0.15 && this.energy > 0.02;
 
     // boost energy
     if (wantBoost) this.energy = Math.max(0, this.energy - dt * 0.28);

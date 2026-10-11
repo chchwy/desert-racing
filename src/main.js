@@ -155,6 +155,8 @@ function frame(timestamp) {
   const dt = Math.min(timer.getDelta(), 1 / 20);
   const time = timer.getElapsed();
 
+  input.poll();
+
   if (input.hit('KeyC')) chase.cycle();
   if (input.hit('KeyR')) player.reset();
 
@@ -183,7 +185,7 @@ function frame(timestamp) {
   bike.update(dt, time, { throttle: player.throttle, boost: player.boost, speed: player.speed, lean: player.lean });
   bike.root.updateMatrixWorld(true);
 
-  chase.update(dt, player, time);
+  chase.update(dt, player, time, { x: input.pad.lookX, y: input.pad.lookY });
 
   bike.tipWorldPositions(tips);
   trails.forEach((t, i) => t.update(tips[i], camera.position, 0.25 + player.throttle * 0.5 + player.boost * 0.6));
@@ -219,5 +221,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer };
+window.__game = { player, terrain, chase, camera, renderer, input };
 requestAnimationFrame(frame);

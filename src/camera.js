@@ -37,13 +37,20 @@ export class ChaseCamera {
     this.mode = (this.mode + 1) % MODES.length;
   }
 
-  update(dt, player, time) {
+  update(dt, player, time, look) {
     const speed = player.speed;
+    const lookX = look?.x ?? 0;
+    const lookY = look?.y ?? 0;
+    const stickLook = Math.hypot(lookX, lookY) > 0.01;
+    if (stickLook) {
+      this.orbit -= lookX * 1.8 * dt;
+      this.orbitPitch = THREE.MathUtils.clamp(this.orbitPitch + lookY * 1.2 * dt, -0.3, 0.8);
+    }
     // follow the travel direction when moving, the nose when slow
     const velHeading = Math.atan2(player.vel.x, player.vel.z);
     const target = speed > 8 ? lerpAngle(player.yaw, velHeading, 0.5) : player.yaw;
     this.heading = dampAngle(this.heading, target, 3.2, dt);
-    if (!this.dragging) {
+    if (!this.dragging && !stickLook) {
       this.orbit = THREE.MathUtils.damp(this.orbit, 0, 1.5, dt);
       this.orbitPitch = THREE.MathUtils.damp(this.orbitPitch, 0, 1.5, dt);
     }

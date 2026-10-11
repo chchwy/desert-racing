@@ -25,9 +25,17 @@ URL flags, read in `src/main.js`:
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
 
-`window.__game` is `{ player, terrain, chase, camera, renderer }`. The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
+`window.__game` is `{ player, terrain, chase, camera, renderer, input }`. The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
 
 A ~98 MB reference mp4 sits untracked in the repo root. The game does not load it. Do not commit it.
+
+## Controls
+
+Keyboard stays on `Input`. `Input.poll` runs once per frame and reads one standard gamepad through `readGamepad`.
+
+Steer is positive to the rider's left, the same sign as KeyA. A standard pad's axis 0 is positive to the right, and that negation happens only in `readGamepad`. The right stick's positive X matches a mouse drag to the right: chase `orbit` decreases. Do not flip either sign in `player.js`.
+
+RT or left-stick up throttles, LT or left-stick down brakes, the left stick and d-pad steer, A jumps, X or LB holds boost, Y cycles the camera, the right stick orbits, Menu resets. Analog throttle uses the existing thrust term. Chrome hides the pad until the page is focused and a button has been pressed.
 
 ## Frame
 
@@ -43,7 +51,8 @@ Bike space is **+Z forward, +Y up, +X to the rider's left**. This is not three.j
 | --- | --- |
 | `src/main.js` | Renderer, post, loop, HUD, `?demo` |
 | `src/player.js` | Input, hover, jump, cylinder push-out |
-| `src/camera.js` | Chase / side / front, mouse orbit |
+| `src/gamepad.js` | Standard gamepad (Xbox) axes and buttons |
+| `src/camera.js` | Chase / side / front, mouse orbit, right-stick look |
 | `src/bike.js` | Hover-bike from primitives. Thrusters. Mounts the rider |
 | `src/riders/cat.js` | Cat GLB, seat fit, wind shader |
 | `src/terrain.js` | `heightAt`, chunk streaming, prop hookup |
