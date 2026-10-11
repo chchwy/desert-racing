@@ -39,7 +39,7 @@ RT or left-stick up throttles, LT or left-stick down brakes, the left stick and 
 
 ## Coins
 
-`src/coins.js` lays exactly 100,000 coins on one bowed trail. Each disc is 2.8 km across (`COIN_R` 1400). The center is lifted by the radius (`COIN_LIFT`) or the bottom sinks into the sand, and `Y_REACH` has to cover that lift or a bike on the ground cannot collect. Do not put a second copy of either number in `player.js`.
+`src/coins.js` lays exactly 100,000 coins on one bowed trail. Each disc is 2.8 km across (`COIN_R` 1400) and adds 10,000 to the 金幣 counter (`COIN_WORTH`). The readout is the small-coin total, not how many discs were picked up. The center is lifted by the radius (`COIN_LIFT`) or the bottom sinks into the sand, and `Y_REACH` has to cover that lift or a bike on the ground cannot collect. Do not put a second copy of either number in `player.js`.
 
 Only coins near the bike get a mesh. `coinsInChunk` buckets the trail by chunk, and `coinsNear` binary-searches the forward projection. `Terrain.update` keeps the chunk under a coin while its disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim. Nudge only slides the hub out of a solid.
 

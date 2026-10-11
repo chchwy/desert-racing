@@ -6,7 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 
 import { Terrain, heightAt } from './terrain.js';
-import { coinCount } from './coins.js';
+import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
@@ -170,7 +170,7 @@ function frame(timestamp) {
   terrain.update(player.pos);
   const gained = terrain.collectCoins(prevPos, player.pos);
   if (gained) {
-    hud.coins.textContent = String(coinCount());
+    hud.coins.textContent = formatCoinCount();
     hud.coinCount.classList.remove('pop');
     void hud.coinCount.offsetWidth;
     hud.coinCount.classList.add('pop');

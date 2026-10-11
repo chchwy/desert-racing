@@ -13,6 +13,8 @@ const PICKUP_R = COIN_R + 12;
 const Y_REACH = COIN_LIFT + 40; // center is one radius up; a ground bike must still reach it
 const HUB = 8;
 const SPIN = 0.1;
+// One big disc stands in for this many small coins. The HUD shows the small-coin total.
+const COIN_WORTH = 10000;
 
 // Same basis as the bike's initial yaw (player.yaw = 0.9):
 // forward (sin yaw, cos yaw), right (-forward.z, forward.x).
@@ -38,6 +40,10 @@ let count = 0;
 
 export function coinCount() {
   return count;
+}
+
+export function formatCoinCount(n = count) {
+  return n.toLocaleString('zh-Hant');
 }
 
 // One bowed trail, starting ahead of the spawn and bending off the nose
@@ -201,6 +207,6 @@ export function collectChunkCoins(list, prev, pos) {
     coin.mesh.visible = false;
     gained++;
   }
-  count += gained;
+  count += gained * COIN_WORTH;
   return gained;
 }
