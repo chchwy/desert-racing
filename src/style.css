@@ -1,0 +1,51 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #dcd3c2;
+  font-family: "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+#game { display: block; width: 100vw; height: 100vh; cursor: grab; }
+#game:active { cursor: grabbing; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 6px rgba(60, 40, 20, 0.35); }
+
+.title { position: absolute; left: 3.2vw; top: 4.2vh; }
+.eyebrow {
+  font-size: 11px; letter-spacing: 0.32em; font-weight: 600; color: #fbe9d0;
+  padding-bottom: 6px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.7), rgba(255,255,255,0)) bottom left / 100% 1px no-repeat;
+}
+.headline { font-size: 34px; font-weight: 600; letter-spacing: 0.08em; margin-top: 6px; }
+.sub { font-size: 11px; letter-spacing: 0.12em; opacity: 0.8; margin-top: 8px; }
+
+.energy {
+  position: absolute; left: 50%; top: 2.2vh; width: 180px; height: 3px; transform: translateX(-50%);
+  background: rgba(255,255,255,0.25);
+}
+.energy-fill { height: 100%; width: 100%; background: #7fe3ff; box-shadow: 0 0 8px #7fe3ff; transform-origin: left; }
+
+.stats { position: absolute; right: 3.2vw; top: 4.2vh; text-align: right; }
+.speed { font-size: 46px; font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; }
+.speed small { font-size: 12px; margin-left: 4px; opacity: 0.85; }
+.state { font-size: 12px; margin-top: 10px; opacity: 0.9; font-variant-numeric: tabular-nums; }
+.counters { margin-top: 10px; font-size: 13px; color: #9ff0ec; letter-spacing: 0.08em; }
+.counters span { margin-left: 18px; }
+.counters b { font-weight: 400; margin-left: 6px; color: #e8fffd; }
+
+.reticle { position: absolute; left: 50%; top: 31%; transform: translate(-50%, -50%); }
+.reticle .ring {
+  width: 92px; height: 92px; border-radius: 50%;
+  border: 1.5px solid rgba(160, 245, 240, 0.75);
+  box-shadow: 0 0 10px rgba(127, 227, 255, 0.35), inset 0 0 10px rgba(127, 227, 255, 0.2);
+}
+.reticle .tag {
+  position: absolute; left: 104px; top: 38px; white-space: nowrap;
+  font-size: 9px; letter-spacing: 0.1em; padding: 1px 5px;
+  background: rgba(20, 30, 40, 0.35); color: #dffcff;
+}
+
+.help {
+  position: absolute; left: 3.2vw; bottom: 3vh; font-size: 12px; letter-spacing: 0.05em; opacity: 0.8;
+}
+.fps { position: absolute; right: 1vw; bottom: 1vh; font-size: 10px; opacity: 0.5; }
