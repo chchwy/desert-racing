@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const TOTAL = 100;
+const TOTAL = 100000;
 // 2.8 km across: wider than the stretch of desert the fog used to show (~1.9 km),
 // and far larger than the cat (~1.9 m).
 export const COIN_R = 1400;
@@ -40,12 +40,13 @@ export function coinCount() {
   return count;
 }
 
-// One bowed trail of 100 coins, starting ahead of the spawn and bending
-// off the nose so it clears the pyramid group at (149, 118).
+// One bowed trail, starting ahead of the spawn and bending off the nose
+// so the first discs clear the pyramid group at (149, 118).
+// The third component is the forward projection, strictly increasing with u.
 function pointAt(u) {
   const lat = Math.sin(u * 0.0034) * 340 + Math.sin(u * 0.011 + Math.PI) * 28;
   const along = AHEAD + u;
-  return [FX * along + RX * lat, FZ * along + RZ * lat];
+  return [FX * along + RX * lat, FZ * along + RZ * lat, along];
 }
 
 function buildPath() {
@@ -70,10 +71,52 @@ function buildPath() {
 }
 
 function xy(p) {
-  return { x: p[0], z: p[1] };
+  return { x: p[0], z: p[1], a: p[2] };
 }
 
 export const coinPath = buildPath();
+
+const EMPTY = [];
+let bucketSize = 0;
+const buckets = new Map();
+
+function ensureBuckets(size) {
+  if (bucketSize === size) return;
+  buckets.clear();
+  bucketSize = size;
+  for (const spot of coinPath) {
+    const k = Math.floor(spot.x / size) + ',' + Math.floor(spot.z / size);
+    let list = buckets.get(k);
+    if (!list) buckets.set(k, (list = []));
+    list.push(spot);
+  }
+}
+
+export function coinsInChunk(cx, cz, size) {
+  ensureBuckets(size);
+  return buckets.get(cx + ',' + cz) || EMPTY;
+}
+
+// Spots are sorted by forward projection. A full scan of 100000 is unnecessary.
+export function coinsNear(x, z, reach) {
+  const along = x * FX + z * FZ;
+  const reach2 = reach * reach;
+  let lo = 0;
+  let hi = coinPath.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (coinPath[mid].a < along - reach) lo = mid + 1;
+    else hi = mid;
+  }
+  const out = [];
+  for (let i = lo; i < coinPath.length && coinPath[i].a <= along + reach; i++) {
+    const spot = coinPath[i];
+    const dx = spot.x - x;
+    const dz = spot.z - z;
+    if (dx * dx + dz * dz <= reach2) out.push(spot);
+  }
+  return out;
+}
 
 function nearestHub(colliders, x, z) {
   let best = null;
@@ -120,8 +163,7 @@ export function buildChunkCoins(cx, cz, size, heightAt, colliders) {
   const group = new THREE.Group();
   const list = [];
 
-  for (const spot of coinPath) {
-    if (Math.floor(spot.x / size) !== cx || Math.floor(spot.z / size) !== cz) continue;
+  for (const spot of coinsInChunk(cx, cz, size)) {
     const id = 'path:' + spot.i;
     if (collected.has(id)) continue;
     const moved = nudge(spot.x, spot.z, colliders);

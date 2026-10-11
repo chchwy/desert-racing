@@ -164,7 +164,7 @@ function frame(timestamp) {
   // two physics substeps for stable hovering at high speed
   const colliders = terrain.collidersNear(player.pos.x, player.pos.z);
   for (let i = 0; i < 2; i++) {
-    player.update(dt / 2, input, colliders);
+    player.update(dt / 2, input, colliders, (x, z, n) => terrain.floorAt(x, z, n));
     if (i === 0) input.pressed.delete('Space');
   }
   terrain.update(player.pos);
@@ -185,7 +185,7 @@ function frame(timestamp) {
   bike.update(dt, time, { throttle: player.throttle, boost: player.boost, speed: player.speed, lean: player.lean });
   bike.root.updateMatrixWorld(true);
 
-  chase.update(dt, player, time, { x: input.pad.lookX, y: input.pad.lookY });
+  chase.update(dt, player, time, { x: input.pad.lookX, y: input.pad.lookY }, (x, z) => terrain.floorAt(x, z));
 
   bike.tipWorldPositions(tips);
   trails.forEach((t, i) => t.update(tips[i], camera.position, 0.25 + player.throttle * 0.5 + player.boost * 0.6));

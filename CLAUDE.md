@@ -39,9 +39,9 @@ RT or left-stick up throttles, LT or left-stick down brakes, the left stick and 
 
 ## Coins
 
-`src/coins.js` lays exactly 100 coins on one bowed trail. Each disc is 2.8 km across (`COIN_R` 1400), wider than the desert the old fog distance could show, so the cat and the pyramids read as small. The center is lifted by the radius (`COIN_LIFT`) or the bottom sinks into the sand, and `Y_REACH` has to cover that lift or a bike on the ground cannot collect. Do not put a second copy of either number in `player.js`.
+`src/coins.js` lays exactly 100,000 coins on one bowed trail. Each disc is 2.8 km across (`COIN_R` 1400). The center is lifted by the radius (`COIN_LIFT`) or the bottom sinks into the sand, and `Y_REACH` has to cover that lift or a bike on the ground cannot collect. Do not put a second copy of either number in `player.js`.
 
-The mesh is owned by the chunk under the coin's center. `Terrain.update` also keeps that chunk while the disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim so the disc is not clipped into haze. Nudge only slides the hub out of a solid; pushing by the full radius throws the coin off the trail.
+Only coins near the bike get a mesh. `coinsInChunk` buckets the trail by chunk, and `coinsNear` binary-searches the forward projection. `Terrain.update` keeps the chunk under a coin while its disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim. Nudge only slides the hub out of a solid.
 
 ## Frame
 
@@ -67,13 +67,13 @@ Bike space is **+Z forward, +Y up, +X to the rider's left**. This is not three.j
 | `src/sky.js` | Sky dome. `SUN_DIR`, `HAZE_COLOR` |
 | `src/effects.js` | Dust, ribbons, speed lines |
 
-`heightAt(x, z)` is the only ground. The terrain mesh and the hover physics both call it. Do not keep a second height field.
+`heightAt(x, z)` is the sand. The hover floor and the camera's ground clamp use `Terrain.floorAt`, which is the sand unless a pyramid face is higher. Do not point the bike back at `heightAt` alone or it will drive through the pyramids.
 
 Chunks are 200 m (`CHUNK_SIZE`). `VIEW_RADIUS` is 4. At most two chunks build per frame after the first forced fill. `Terrain.collidersNear` only returns props from the 3×3 chunks around the bike, and the push happens after integration, so a fast bike can clip a thin obstacle. Big silhouettes need a fat base collider.
 
 ## Colliders
 
-A collider is `{ x, z, r, top }`. It blocks everything **below** `top` inside a vertical cylinder of radius `r`. The bike adds 1.3 m of padding. There is no per-band slice: a wide upper collider also blocks the ground. Tapered solids (pyramids) need several cylinders, wide and short at the base, narrower and taller above.
+A collider is `{ x, z, r, top }`. It blocks everything **below** `top` inside a vertical cylinder of radius `r`. The bike adds 1.3 m of padding. There is no per-band slice: a wide upper collider also blocks the ground. That is why pyramids are not cylinders. A cylinder stack shoves the bike off the face, so a pyramid is a slope record and `floorAt` raises the hover floor to the stone.
 
 Jump apex is only a few metres (`vel.y` boost of 13, gravity 26–34). The base band is what normal driving hits. Upper bands matter when a dune lifts the bike into the solid. Spawn stays clear for 60 m around the origin (`props.js`).
 
@@ -81,7 +81,7 @@ Prop placement in a chunk is a pure function of `hashSeed(cx + 1000, cz - 1000)`
 
 ## Pyramids
 
-`ConeGeometry(radius, height, 4)` has its base corners on the local axes. The mesh uses `rotation.y = yaw - π/4` so those corners land on the corners of the square base. The plinth is a yaw-aligned box, slightly wider than the cone, sunk with `groundMin`.
+`ConeGeometry(radius, height, 4)` has its base corners on the local axes. The mesh uses `rotation.y = yaw - π/4` so those corners land on the corners of the square base. The plinth is a yaw-aligned box, slightly wider than the cone, sunk with `groundMin`. `describePyramid` stores that same placement. `pyramidFace` is the L∞ taper in the yaw frame: full height at the center, plinth height at the base edge. The face normal tilts outward. Drive up it; do not add cylinder bands back. On a steep face the chase camera pulls up and back, and the look point stays above the stone. A horizontal look-ahead sits inside the pyramid and the frame fills with the wall.
 
 The landmark cluster is fixed in chunk (0, 0) at `(149, 118)`, the flat patch straight ahead of the initial yaw `0.9`, with a face turned back toward the origin (`atan2(-x, -z)`). Other clusters are rare and must stay well clear of that one (`LANDMARK_CLEAR`, and the 320 m check). The sun shadow frustum is only ±30 m around the bike, so a pyramid does not cast a long shadow until you are next to it.
 

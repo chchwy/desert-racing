@@ -128,46 +128,72 @@ function statue(group, colliders, rng, x, z, heightAt) {
   }
 }
 
-// Four circles cover a yaw-aligned square of half-width `half`.
-// Each circle is tangent to two edges and one corner, so the stone is blocked
-// and the extra reach past a face stays about 0.2 * half.
-function addSquareCollider(colliders, x, z, yaw, half, top) {
-  const a = half / 2;
-  const r = a * Math.SQRT2;
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const [ox, oz] = yawOffset(yaw, sx * a, sz * a);
-      colliders.push({ x: x + ox, z: z + oz, r, top });
-    }
-  }
-}
-
-function addPyramid(group, colliders, x, z, side, height, yaw, heightAt) {
+// Same numbers the mesh uses. The bike rides this instead of being shoved out by cylinders.
+export function describePyramid(x, z, side, height, yaw, heightAt) {
   const plinthH = 1.7;
   const plinthSide = side * 1.12;
   const gy = groundMin(heightAt, x, z, plinthSide * 0.72) - 1.8;
-  addMesh(group, boxGeo, limestoneDark, x, gy + plinthH / 2, z, plinthSide, plinthH, plinthSide, yaw);
-
-  // ConeGeometry corners sit on the axes. yaw - PI/4 swings them onto the base corners.
   const capR = (side / 2) * Math.SQRT2;
-  addMesh(
-    group, coneGeo, limestone,
-    x, gy + plinthH + height / 2 - 0.15, z,
-    capR, height + 0.15, capR,
-    yaw - Math.PI / 4,
-  );
-
-  // Cylinders block everything below `top`. Upper bands are narrower, matching the taper.
-  const bands = 5;
-  for (let i = 0; i < bands; i++) {
-    const y0 = (i / bands) * height;
-    const half = i === 0 ? plinthSide / 2 : (side * (1 - y0 / height)) / 2;
-    const top = gy + plinthH + ((i + 1) / bands) * height;
-    addSquareCollider(colliders, x, z, yaw, Math.max(half, 1.5), top);
-  }
+  const meshH = height + 0.15;
+  const meshY = gy + plinthH + height / 2 - 0.15;
+  return {
+    x,
+    z,
+    yaw,
+    plinthH,
+    plinthSide,
+    plinthHalf: plinthSide / 2,
+    half: side / 2,
+    baseY: gy,
+    plinthTop: gy + plinthH,
+    capR,
+    meshH,
+    meshY,
+    apexY: meshY + meshH / 2,
+    coneBase: meshY - meshH / 2,
+  };
 }
 
-function pyramidCluster(group, colliders, rng, x, z, heightAt, yaw = rng() * Math.PI * 2) {
+// Highest stone at (x, z), or null. The normal tilts outward, down the face.
+export function pyramidFace(p, x, z) {
+  const dx = x - p.x;
+  const dz = z - p.z;
+  const c = Math.cos(p.yaw);
+  const s = Math.sin(p.yaw);
+  const lx = dx * c - dz * s;
+  const lz = dx * s + dz * c;
+  const ax = Math.abs(lx);
+  const az = Math.abs(lz);
+  if (ax > p.plinthHalf || az > p.plinthHalf) return null;
+
+  let y = p.plinthTop;
+  let dlx = 0;
+  let dlz = 0;
+  if (ax <= p.half && az <= p.half) {
+    const m = Math.max(ax, az);
+    const coneY = p.coneBase + (p.apexY - p.coneBase) * (1 - m / p.half);
+    if (coneY > y) {
+      y = coneY;
+      const inv = (p.apexY - p.coneBase) / p.half;
+      if (ax >= az) dlx = -inv * Math.sign(lx || 1);
+      else dlz = -inv * Math.sign(lz || 1);
+    }
+  }
+  const dhdx = dlx * c + dlz * s;
+  const dhdz = -dlx * s + dlz * c;
+  const len = Math.hypot(dhdx, 1, dhdz);
+  return { y, nx: -dhdx / len, ny: 1 / len, nz: -dhdz / len };
+}
+
+function addPyramid(group, slopes, x, z, side, height, yaw, heightAt) {
+  const pyr = describePyramid(x, z, side, height, yaw, heightAt);
+  addMesh(group, boxGeo, limestoneDark, x, pyr.baseY + pyr.plinthH / 2, z, pyr.plinthSide, pyr.plinthH, pyr.plinthSide, yaw);
+  // ConeGeometry corners sit on the axes. yaw - PI/4 swings them onto the base corners.
+  addMesh(group, coneGeo, limestone, x, pyr.meshY, z, pyr.capR, pyr.meshH, pyr.capR, yaw - Math.PI / 4);
+  slopes.push(pyr);
+}
+
+function pyramidCluster(group, slopes, rng, x, z, heightAt, yaw = rng() * Math.PI * 2) {
   const n = rng() < 0.72 ? 3 : 2;
   const mainH = 32 + rng() * 16;
   const heights = [mainH];
@@ -185,7 +211,7 @@ function pyramidCluster(group, colliders, rng, x, z, heightAt, yaw = rng() * Mat
     const lx = cursor + sides[i] / 2;
     cursor += sides[i] + gap;
     const [ox, oz] = yawOffset(yaw, lx, (i - (n - 1) / 2) * 2);
-    addPyramid(group, colliders, x + ox, z + oz, sides[i], heights[i], yaw, heightAt);
+    addPyramid(group, slopes, x + ox, z + oz, sides[i], heights[i], yaw, heightAt);
   }
 }
 
@@ -209,11 +235,12 @@ const LANDMARK_CLEAR = 105;
 export function buildChunkProps(cx, cz, size, heightAt) {
   const group = new THREE.Group();
   const colliders = [];
+  const slopes = [];
   const rng = mulberry32(hashSeed(cx + 1000, cz - 1000));
 
   if (cx === 0 && cz === 0) {
     pyramidCluster(
-      group, colliders, mulberry32(hashSeed(11, 19)),
+      group, slopes, mulberry32(hashSeed(11, 19)),
       LANDMARK_X, LANDMARK_Z, heightAt,
       Math.atan2(-LANDMARK_X, -LANDMARK_Z),
     );
@@ -239,8 +266,8 @@ export function buildChunkProps(cx, cz, size, heightAt) {
     const dx = x - LANDMARK_X;
     const dz = z - LANDMARK_Z;
     if (Math.hypot(x, z) > 280 && dx * dx + dz * dz > 320 * 320) {
-      pyramidCluster(group, colliders, rng, x, z, heightAt);
+      pyramidCluster(group, slopes, rng, x, z, heightAt);
     }
   }
-  return { group, colliders };
+  return { group, colliders, slopes };
 }

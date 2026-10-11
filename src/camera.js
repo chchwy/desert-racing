@@ -37,7 +37,7 @@ export class ChaseCamera {
     this.mode = (this.mode + 1) % MODES.length;
   }
 
-  update(dt, player, time, look) {
+  update(dt, player, time, look, floorAt = heightAt) {
     const speed = player.speed;
     const lookX = look?.x ?? 0;
     const lookY = look?.y ?? 0;
@@ -73,15 +73,29 @@ export class ChaseCamera {
     }
     height += this.orbitPitch * dist;
 
+    // Same forward as the bike. A steep face puts a horizontal look point inside the stone.
+    const nose = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+    const climb = THREE.MathUtils.clamp(
+      (floorAt(player.pos.x + nose.x * 8, player.pos.z + nose.z * 8) - floorAt(player.pos.x, player.pos.z)) / 8,
+      0,
+      1.4,
+    );
+    dist += climb * 5;
+    height += climb * 7;
+
     const back = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     const desired = player.pos.clone().addScaledVector(back, -dist);
     desired.y += height;
-    const ground = heightAt(desired.x, desired.z) + 0.8;
+    const ground = floorAt(desired.x, desired.z) + 0.8;
     if (desired.y < ground) desired.y = ground;
 
     const lookTarget = player.pos.clone();
     lookTarget.y += 1.25;
-    lookTarget.addScaledVector(new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading)), lookAhead);
+    lookTarget.addScaledVector(nose, lookAhead);
+    if (climb > 0.25) {
+      const above = floorAt(lookTarget.x, lookTarget.z) + 4;
+      if (lookTarget.y < above) lookTarget.y = above;
+    }
 
     // smooth in bike-relative space so high speed never makes the camera lag into the bike
     const desiredOffset = desired.sub(player.pos);
@@ -92,7 +106,7 @@ export class ChaseCamera {
     }
     this.offset.lerp(desiredOffset, 1 - Math.exp(-6 * dt));
     this.pos.copy(player.pos).add(this.offset);
-    const ground2 = heightAt(this.pos.x, this.pos.z) + 0.6;
+    const ground2 = floorAt(this.pos.x, this.pos.z) + 0.6;
     if (this.pos.y < ground2) this.pos.y = ground2;
     this.look.lerp(lookTarget, 1 - Math.exp(-20 * dt));
 

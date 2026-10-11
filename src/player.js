@@ -13,6 +13,12 @@ const VMAX_BOOST = 72; // ~260 km/h
 
 const tmpN = new THREE.Vector3();
 
+function defaultFloor(x, z, outN) {
+  const y = heightAt(x, z);
+  if (outN) normalAt(x, z, outN, 1.5);
+  return y;
+}
+
 const PAD_IDLE = {
   throttle: 0,
   brake: 0,
@@ -106,7 +112,7 @@ export class Player {
     return Math.hypot(this.vel.x, this.vel.z);
   }
 
-  update(dt, input, colliders) {
+  update(dt, input, colliders, floorAt = defaultFloor) {
     const pad = input.pad ?? PAD_IDLE;
     const fwdIn = Math.max(input.down('KeyW', 'ArrowUp') ? 1 : 0, pad.throttle);
     const back = Math.max(input.down('KeyS', 'ArrowDown') ? 1 : 0, pad.brake);
@@ -153,8 +159,7 @@ export class Player {
     this.vel.addScaledVector(fwd, Math.abs(lateral) * keep * 0.5);
 
     // slopes: gravity pulls along the sand
-    const h = heightAt(this.pos.x, this.pos.z);
-    normalAt(this.pos.x, this.pos.z, tmpN, 1.5);
+    const h = floorAt(this.pos.x, this.pos.z, tmpN);
     if (!this.airborne) {
       this.vel.x += tmpN.x * G * 0.35 * dt;
       this.vel.z += tmpN.z * G * 0.35 * dt;
@@ -177,7 +182,7 @@ export class Player {
 
     this.pos.addScaledVector(this.vel, dt);
 
-    const h2 = heightAt(this.pos.x, this.pos.z);
+    const h2 = floorAt(this.pos.x, this.pos.z);
     const minGap = 0.35;
     if (this.pos.y < h2 + minGap) {
       const impact = slopeVy - this.vel.y;
@@ -222,8 +227,8 @@ export class Player {
     if (this.airborne) {
       pitchTarget = -Math.atan2(this.vel.y, Math.max(speed, 1)) * 0.6;
     } else {
-      const ahead = heightAt(this.pos.x + fwd.x * 2.5, this.pos.z + fwd.z * 2.5);
-      const behind = heightAt(this.pos.x - fwd.x * 2.5, this.pos.z - fwd.z * 2.5);
+      const ahead = floorAt(this.pos.x + fwd.x * 2.5, this.pos.z + fwd.z * 2.5);
+      const behind = floorAt(this.pos.x - fwd.x * 2.5, this.pos.z - fwd.z * 2.5);
       pitchTarget = -Math.atan2(ahead - behind, 5) - this.throttle * 0.05;
     }
     this.pitch = THREE.MathUtils.damp(this.pitch, pitchTarget, 6, dt);

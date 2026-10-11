@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { fbm } from './noise.js';
-import { buildChunkProps } from './props.js';
-import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinPath, COIN_R } from './coins.js';
+import { buildChunkProps, pyramidFace } from './props.js';
+import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
 const CHUNK_SEGMENTS = 64;
@@ -218,11 +218,7 @@ export class Terrain {
       // A coin wider than the view lives in a far chunk. Keep that chunk while its disc
       // reaches the player, or the mesh never loads and then pops out from underneath.
       const coinReach = (VIEW_RADIUS + 0.5) * CHUNK_SIZE + COIN_R;
-      const coinReach2 = coinReach * coinReach;
-      for (const spot of coinPath) {
-        const sdx = spot.x - position.x;
-        const sdz = spot.z - position.z;
-        if (sdx * sdx + sdz * sdz > coinReach2) continue;
+      for (const spot of coinsNear(position.x, position.z, coinReach)) {
         const sx = Math.floor(spot.x / CHUNK_SIZE);
         const sz = Math.floor(spot.z / CHUNK_SIZE);
         const sk = this.key(sx, sz);
@@ -249,6 +245,27 @@ export class Terrain {
       const job = this.queue.shift();
       if (!this.chunks.has(job.k)) this.chunks.set(job.k, this.buildChunk(job.cx, job.cz));
     }
+  }
+
+  // Sand plus the pyramid face, when the stone is higher. outN receives the support normal.
+  floorAt(x, z, outN) {
+    let y = heightAt(x, z);
+    if (outN) normalAt(x, z, outN, 1.5);
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const chunk = this.chunks.get(this.key(cx + dx, cz + dz));
+        if (!chunk) continue;
+        for (const slope of chunk.props.slopes) {
+          const face = pyramidFace(slope, x, z);
+          if (!face || face.y <= y) continue;
+          y = face.y;
+          if (outN) outN.set(face.nx, face.ny, face.nz);
+        }
+      }
+    }
+    return y;
   }
 
   // Colliders from props in the 3x3 chunks around a point.
