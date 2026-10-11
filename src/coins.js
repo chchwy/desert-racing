@@ -1,13 +1,19 @@
 import * as THREE from 'three';
-import { mulberry32, hashSeed } from './noise.js';
 
-const COUNT = 8;
-const SPACING = 18;
-const SPAWN_CLEAR = 32;
+const TOTAL = 100;
+const GAP = 10;
 const PICKUP_R = 3.3;
 const Y_REACH = 2.2;
 
-const coinGeo = new THREE.CylinderGeometry(0.85, 0.85, 0.12, 24);
+// Same basis as the bike's initial yaw (player.yaw = 0.9):
+// forward (sin yaw, cos yaw), right (-forward.z, forward.x).
+const YAW = 0.9;
+const FX = Math.sin(YAW);
+const FZ = Math.cos(YAW);
+const RX = -FZ;
+const RZ = FX;
+
+const coinGeo = new THREE.CylinderGeometry(0.95, 0.95, 0.12, 24);
 coinGeo.rotateX(Math.PI / 2);
 
 const gold = new THREE.MeshStandardMaterial({
@@ -25,14 +31,67 @@ export function coinCount() {
   return count;
 }
 
-function blocked(colliders, x, z, y) {
+// One bowed trail of 100 coins, starting ahead of the spawn and bending
+// off the nose so it clears the pyramid group at (149, 118).
+function pointAt(u) {
+  const lat = Math.sin(u * 0.0034) * 340 + Math.sin(u * 0.011 + Math.PI) * 28;
+  const along = 48 + u;
+  return [FX * along + RX * lat, FZ * along + RZ * lat];
+}
+
+function buildPath() {
+  const pts = [{ i: 0, ...xy(pointAt(0)) }];
+  let u = 0;
+  let prev = pointAt(0);
+  for (let i = 1; i < TOTAL; i++) {
+    let lo = u;
+    let hi = u + GAP;
+    for (let k = 0; k < 14; k++) {
+      const mid = (lo + hi) / 2;
+      const p = pointAt(mid);
+      const d = Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+      if (d < GAP) lo = mid;
+      else hi = mid;
+    }
+    u = (lo + hi) / 2;
+    prev = pointAt(u);
+    pts.push({ i, ...xy(prev) });
+  }
+  return pts;
+}
+
+function xy(p) {
+  return { x: p[0], z: p[1] };
+}
+
+export const coinPath = buildPath();
+
+function nearestSolid(colliders, x, z, y) {
+  let best = null;
   for (const c of colliders) {
     if (y > c.top) continue;
     const dx = x - c.x;
     const dz = z - c.z;
-    if (dx * dx + dz * dz < c.r * c.r) return true;
+    const dist = Math.hypot(dx, dz);
+    const gap = dist - c.r;
+    if (!best || gap < best.gap) best = { dx, dz, dist, gap };
   }
-  return false;
+  return best;
+}
+
+// Slide a coin off a ruin so the trail stays collectible without leaving the line.
+function nudge(x, z, colliders, heightAt) {
+  let px = x;
+  let pz = z;
+  for (let n = 0; n < 6; n++) {
+    const hit = nearestSolid(colliders, px, pz, heightAt(px, pz) + 1.45);
+    if (!hit || hit.gap >= 4) break;
+    const dist = Math.max(hit.dist, 0.001);
+    const push = 4.5 - hit.gap;
+    px += (hit.dx / dist) * push;
+    pz += (hit.dz / dist) * push;
+  }
+  return { x: px, z: pz };
 }
 
 function segmentHits(x0, z0, x1, z1, cx, cz, r) {
@@ -48,30 +107,22 @@ function segmentHits(x0, z0, x1, z1, cx, cz, r) {
   return px * px + pz * pz <= r * r;
 }
 
-// Own seed, so coin slots do not shift the ruin placement in props.js.
 export function buildChunkCoins(cx, cz, size, heightAt, colliders) {
   const group = new THREE.Group();
   const list = [];
-  const rng = mulberry32(hashSeed(cx + 7919, cz + 104729));
-  const placed = [];
 
-  for (let i = 0; i < COUNT; i++) {
-    const x = cx * size + 14 + rng() * (size - 28);
-    const z = cz * size + 14 + rng() * (size - 28);
-    const phase = rng() * Math.PI * 2;
-    const id = cx + ',' + cz + ':' + i;
-    const y = heightAt(x, z) + 1.45;
+  for (const spot of coinPath) {
+    if (Math.floor(spot.x / size) !== cx || Math.floor(spot.z / size) !== cz) continue;
+    const id = 'path:' + spot.i;
     if (collected.has(id)) continue;
-    if (Math.hypot(x, z) < SPAWN_CLEAR) continue;
-    if (placed.some((p) => (p.x - x) ** 2 + (p.z - z) ** 2 < SPACING * SPACING)) continue;
-    if (blocked(colliders, x, z, y)) continue;
-
+    const moved = nudge(spot.x, spot.z, colliders, heightAt);
+    const y = heightAt(moved.x, moved.z) + 1.45;
+    const phase = spot.i * 0.55;
     const mesh = new THREE.Mesh(coinGeo, gold);
-    mesh.position.set(x, y, z);
+    mesh.position.set(moved.x, y, moved.z);
     mesh.rotation.y = phase;
     group.add(mesh);
-    placed.push({ x, z });
-    list.push({ id, mesh, x, z, baseY: y, phase, taken: false });
+    list.push({ id, mesh, x: moved.x, z: moved.z, baseY: y, phase, taken: false });
   }
 
   return { group, list };
