@@ -9,6 +9,8 @@ html, body {
 #game:active { cursor: grabbing; }
 
 #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 6px rgba(60, 40, 20, 0.35); }
+/* White text on snow needs a darker halo. */
+[data-level="snow"] #hud { text-shadow: 0 1px 3px rgba(20, 40, 70, 0.7), 0 0 10px rgba(20, 40, 70, 0.45); }
 
 .title { position: absolute; left: 3.2vw; top: 4.2vh; }
 .eyebrow {

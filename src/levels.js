@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// One level per page load. `?level=rainforest` or `?level=grassland`; anything else is the desert.
+// One level per page load: `?level=rainforest`, `grassland` or `snow`; anything else is the desert.
 // Switching reloads the page: heightAt, the props and the sky all read LEVEL at import time.
 
 const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -76,9 +76,35 @@ export const LEVELS = {
     },
     dust: { color: srgb(0.9, 0.86, 0.66), shade: srgb(0.72, 0.68, 0.48) },
   },
+  snow: {
+    id: 'snow',
+    name: '雪山',
+    title: 'Summit Rider — prototype',
+    eyebrow: 'SUMMIT RIDER / BATTLE PROTOTYPE',
+    headline: '在雪嶺，狩獵。',
+    sub: '懸浮機車原型 · 雪霧＋冰晶 · 地形 endless',
+    page: '#cfdae6',
+    haze: 0xcfdae6,
+    fogNear: 160,
+    fogFar: 5200, // the backdrop range reaches 6 km, so distant peaks fade instead of ending
+    backdrop: true,
+    snowfall: true,
+    sky: { zenith: 0x2a62b8, mid: 0x93b6dc, cover: 0.14, sun: 1.1 },
+    hemi: { sky: 0xdfeaff, ground: 0x8a93a8, intensity: 0.85 },
+    sun: { color: 0xfff8f0, intensity: 2.3 },
+    ground: {
+      base: srgb(0.84, 0.88, 0.95),
+      crest: srgb(0.96, 0.97, 1.0),
+      shade: srgb(0.36, 0.36, 0.4), // bare rock on the steep faces
+      steep: [4.5, 1.15, 0.85], // slope gain, offset, cap: rock only past ~40°
+      roughness: 0.8,
+      normalScale: 0.22,
+    },
+    dust: { color: srgb(0.96, 0.97, 1.0), shade: srgb(0.78, 0.82, 0.9) },
+  },
 };
 
-export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland'];
+export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow'];
 
 function pickLevel() {
   if (typeof location === 'undefined') return LEVELS.desert;

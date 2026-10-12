@@ -4,6 +4,7 @@ import { LEVEL } from './levels.js';
 import { buildChunkProps as buildDesertProps, pyramidFace } from './props.js';
 import { buildJungleProps } from './jungle.js';
 import { buildGrasslandProps } from './grassland.js';
+import { buildSnowProps } from './snow.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -48,8 +49,23 @@ function plainsHeight(x, z) {
   return swell + roll + lumps;
 }
 
+// Snow mountains. Sharp ridged peaks rise out of a broad valley; the start sits on
+// the valley floor, and the ridges climb in from about 250 m out.
+function snowHeight(x, z) {
+  const wx = x + (fbm(x * 0.0007 + 2.2, z * 0.0007, 3) - 0.5) * 500;
+  const wz = z + (fbm(x * 0.0007, z * 0.0007 + 6.6, 3) - 0.5) * 500;
+  const ridge = 1 - Math.abs(fbm(wx * 0.0009, wz * 0.0009, 4) * 2 - 1);
+  const fine = 1 - Math.abs(fbm(wx * 0.004 + 9.1, wz * 0.004 + 3.3, 3) * 2 - 1);
+  const range = smooth(THREE.MathUtils.clamp((fbm(x * 0.0005 + 5.1, z * 0.0005 + 5.7, 3) - 0.3) / 0.4, 0, 1));
+  const valley = smooth(THREE.MathUtils.clamp((Math.hypot(x, z) - 250) / 650, 0, 1));
+  const peaks = (ridge ** 3 * 300 + fine * fine * 22) * (0.2 + 0.8 * range) * valley;
+  const floor = fbm(x * 0.003 + 1.7, z * 0.003 + 4.4, 3) * 18;
+  const lumps = (fbm(x * 0.03, z * 0.03, 2) - 0.5) * 0.8;
+  return peaks + floor + lumps;
+}
+
 // The level is fixed for the page, so every importer gets the same field.
-export const heightAt = { desert: duneHeight, rainforest: jungleHeight, grassland: plainsHeight }[LEVEL.id];
+export const heightAt = { desert: duneHeight, rainforest: jungleHeight, grassland: plainsHeight, snow: snowHeight }[LEVEL.id];
 
 export function normalAt(x, z, target = new THREE.Vector3(), eps = 1.0) {
   const hx = heightAt(x + eps, z) - heightAt(x - eps, z);
@@ -129,8 +145,23 @@ function createNormalMap(heightFn, strength, size = 512) {
   return tex;
 }
 
+// Steeper slopes take the shade color, flats and crests the light one.
+function groundColor(x, z, nrm, c) {
+  const { base, crest, shade, steep = [3, 0.2, 0.7] } = LEVEL.ground;
+  const slope = 1 - nrm.y;
+  const tint = fbm(x * 0.01 + 50, z * 0.01, 2);
+  c.copy(base).lerp(crest, THREE.MathUtils.clamp(0.6 - slope * 4 + (tint - 0.5), 0, 1));
+  const [gain, offset, most] = steep;
+  return c.lerp(shade, THREE.MathUtils.clamp(slope * gain - offset, 0, most));
+}
+
 const DESERT = LEVEL.id === 'desert';
-const buildChunkProps = { desert: buildDesertProps, rainforest: buildJungleProps, grassland: buildGrasslandProps }[LEVEL.id];
+const buildChunkProps = {
+  desert: buildDesertProps,
+  rainforest: buildJungleProps,
+  grassland: buildGrasslandProps,
+  snow: buildSnowProps,
+}[LEVEL.id];
 const RIPPLE_TILE = DESERT ? 9 : 6; // metres per ground texture tile
 
 export class Terrain {
@@ -164,7 +195,6 @@ export class Terrain {
     const colors = new Float32Array(n * n * 3);
     const uvs = new Float32Array(n * n * 2);
     const nrm = new THREE.Vector3();
-    const { base, crest, shade } = LEVEL.ground;
     const c = new THREE.Color();
 
     for (let j = 0; j < n; j++) {
@@ -180,11 +210,7 @@ export class Terrain {
         normals[k * 3] = nrm.x;
         normals[k * 3 + 1] = nrm.y;
         normals[k * 3 + 2] = nrm.z;
-        // steeper slopes slightly darker/redder, flats & crests lighter
-        const slope = 1 - nrm.y;
-        const tint = fbm(x * 0.01 + 50, z * 0.01, 2);
-        c.copy(base).lerp(crest, THREE.MathUtils.clamp(0.6 - slope * 4 + (tint - 0.5), 0, 1));
-        c.lerp(shade, THREE.MathUtils.clamp(slope * 3 - 0.2, 0, 0.7));
+        groundColor(x, z, nrm, c);
         colors[k * 3] = c.r;
         colors[k * 3 + 1] = c.g;
         colors[k * 3 + 2] = c.b;
@@ -328,5 +354,95 @@ export class Terrain {
       }
     }
     return out;
+  }
+}
+
+// Far mountains for the snow level: a low-res ring of the same height field from just
+// inside the streamed chunks out to 6 km, rebuilt when the bike has moved far enough.
+// It sits a few metres low so the detailed chunks cover it where the two overlap.
+// A rebuild costs ~25 ms, so it fills a few rings per frame and swaps in when done.
+const BACKDROP_INNER = 700;
+const BACKDROP_OUTER = 6000;
+const BACKDROP_ANGLES = 160;
+const BACKDROP_RINGS = 56;
+const BACKDROP_SINK = 8;
+const BACKDROP_STEP = 150;
+const BACKDROP_RINGS_PER_FRAME = 8;
+
+function backdropIndex() {
+  const na = BACKDROP_ANGLES;
+  const idx = [];
+  for (let r = 0; r < BACKDROP_RINGS - 1; r++) {
+    for (let a = 0; a < na; a++) {
+      const i0 = r * na + a;
+      const i1 = r * na + ((a + 1) % na);
+      const i2 = i0 + na;
+      const i3 = i1 + na;
+      idx.push(i0, i1, i2, i1, i3, i2);
+    }
+  }
+  return idx;
+}
+
+export class Backdrop {
+  constructor(scene) {
+    this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+    this.index = backdropIndex();
+    this.mesh = null;
+    this.scene = scene;
+    this.center = null;
+    this.job = null;
+    this.n = new THREE.Vector3();
+    this.c = new THREE.Color();
+  }
+
+  update(position, force = false) {
+    const moved = !this.center || Math.hypot(position.x - this.center.x, position.z - this.center.z) >= BACKDROP_STEP;
+    if (moved && !this.job) {
+      this.center = { x: position.x, z: position.z };
+      const size = BACKDROP_ANGLES * BACKDROP_RINGS * 3;
+      this.job = { cx: position.x, cz: position.z, ring: 0, pos: new Float32Array(size), nrm: new Float32Array(size), col: new Float32Array(size) };
+    }
+    if (!this.job) return;
+    const job = this.job;
+    const end = force ? BACKDROP_RINGS : Math.min(BACKDROP_RINGS, job.ring + BACKDROP_RINGS_PER_FRAME);
+    const na = BACKDROP_ANGLES;
+    const { n, c } = this;
+    for (let r = job.ring; r < end; r++) {
+      // Rings spread out with distance: fine near the chunks, coarse at the horizon.
+      const t = r / (BACKDROP_RINGS - 1);
+      const rad = BACKDROP_INNER * (BACKDROP_OUTER / BACKDROP_INNER) ** t;
+      const eps = Math.max(4, rad * 0.01);
+      for (let a = 0; a < na; a++) {
+        const ang = (a / na) * Math.PI * 2;
+        const x = job.cx + Math.cos(ang) * rad;
+        const z = job.cz + Math.sin(ang) * rad;
+        const k = (r * na + a) * 3;
+        job.pos[k] = x;
+        job.pos[k + 1] = heightAt(x, z) - BACKDROP_SINK;
+        job.pos[k + 2] = z;
+        normalAt(x, z, n, eps);
+        job.nrm[k] = n.x; job.nrm[k + 1] = n.y; job.nrm[k + 2] = n.z;
+        groundColor(x, z, n, c);
+        job.col[k] = c.r; job.col[k + 1] = c.g; job.col[k + 2] = c.b;
+      }
+    }
+    job.ring = end;
+    if (job.ring < BACKDROP_RINGS) return;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(job.pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(job.nrm, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(job.col, 3));
+    geo.setIndex(this.index);
+    geo.computeBoundingSphere();
+    if (this.mesh) {
+      this.mesh.geometry.dispose();
+      this.mesh.geometry = geo;
+    } else {
+      this.mesh = new THREE.Mesh(geo, this.material);
+      this.scene.add(this.mesh);
+    }
+    this.job = null;
   }
 }
