@@ -1,2 +1,4 @@
 node_modules
 dist
+# Reference videos in the repo root (large, not loaded by the game)
+/*.mp4
