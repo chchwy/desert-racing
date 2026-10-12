@@ -5,9 +5,11 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 
-import { Terrain, Backdrop, heightAt, lavaUniforms } from './terrain.js';
+import { Terrain, Backdrop, heightAt, groundUniforms } from './terrain.js';
 import { VOLCANO } from './lava.js';
 import { Plume } from './plume.js';
+import { FishSchools } from './fish.js';
+import { swellUniforms } from './reef.js';
 import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -69,6 +71,9 @@ const backdrop = LEVEL.backdrop ? new Backdrop(scene) : null;
 backdrop?.update(player.pos, true);
 const weather = (LEVEL.weather ?? []).map((w) => new Weather(scene, w));
 const shatter = LEVEL.id === 'snow' ? new Shatter(scene, ice) : null;
+
+// Seabed: schools of fish around the bike.
+const fish = LEVEL.id === 'ocean' ? new FishSchools(scene) : null;
 
 // Volcano: an ash column over the crater, seen from kilometres away, and a smaller
 // smoking, ember-lit plume over the lava pool ahead of the start.
@@ -286,7 +291,9 @@ function frame(timestamp) {
   backdrop?.update(player.pos);
   for (const w of weather) w.update(time, camera.position);
   for (const p of plumes) p.update(time);
-  lavaUniforms.uTime.value = time;
+  groundUniforms.uTime.value = time;
+  swellUniforms.uTime.value = time;
+  fish?.update(dt, time, player.pos, player.yaw);
 
   sky.position.copy(camera.position);
   sky.material.uniforms.uTime.value = time;

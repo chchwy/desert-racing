@@ -22,6 +22,8 @@ const fragmentShader = /* glsl */ `
   uniform float uCover; // extra cloud cover, 0 = clear desert sky
   uniform float uSun;   // sun disc and glow strength
   uniform vec3 uCloud;  // cloud tint, white by default
+  uniform float uCloudSpeed;
+  uniform float uHazeTop; // how high the horizon haze climbs before the sky shows
   varying vec3 vDir;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -42,8 +44,8 @@ const fragmentShader = /* glsl */ `
     float y = d.y;
 
     // sky gradient
-    vec3 col = mix(uHaze, uMid, smoothstep(0.0, 0.18, y));
-    col = mix(col, uZenith, smoothstep(0.15, 0.8, y));
+    vec3 col = mix(uHaze, uMid, smoothstep(0.0, uHazeTop, y));
+    col = mix(col, uZenith, smoothstep(uHazeTop * 0.8, 0.8 + uHazeTop * 0.2, y));
 
     // sun
     float sd = max(dot(d, uSunDir), 0.0);
@@ -52,14 +54,14 @@ const fragmentShader = /* glsl */ `
 
     // clouds on a flat layer
     if (y > 0.0) {
-      vec2 uv = d.xz / (y + 0.08) * 1.4 + vec2(uTime * 0.012, uTime * 0.004);
+      vec2 uv = d.xz / (y + 0.08) * 1.4 + vec2(uTime * 0.012, uTime * 0.004) * uCloudSpeed;
       float n = fbm(uv);
       float n2 = fbm(uv * 2.7 + 5.0);
       float cover = smoothstep(0.48 - uCover, 0.78 - uCover * 0.5, n * 0.8 + n2 * 0.3);
       float shade = smoothstep(0.4, 0.9, fbm(uv + uSunDir.xz * 0.08));
       vec3 cloudCol = mix(vec3(1.05, 1.05, 1.08), vec3(0.72, 0.78, 0.88), shade * 0.7);
       cloudCol = cloudCol * uCloud + vec3(1.0, 0.95, 0.85) * pow(sd, 6.0) * 0.6;
-      float fade = smoothstep(0.02, 0.22, y);
+      float fade = smoothstep(0.02 + uHazeTop * 0.6, 0.22 + uHazeTop, y);
       col = mix(col, cloudCol, cover * fade * 0.95);
     }
 
@@ -83,6 +85,8 @@ export function createSky() {
       uCover: { value: LEVEL.sky.cover },
       uSun: { value: LEVEL.sky.sun },
       uCloud: { value: new THREE.Color(LEVEL.sky.cloud ?? 0xffffff) },
+      uCloudSpeed: { value: LEVEL.sky.cloudSpeed ?? 1 },
+      uHazeTop: { value: LEVEL.sky.hazeTop ?? 0.18 },
     },
     side: THREE.BackSide,
     depthWrite: false,

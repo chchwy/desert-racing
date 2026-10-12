@@ -7,6 +7,7 @@ import { buildJungleProps } from './jungle.js';
 import { buildGrasslandProps } from './grassland.js';
 import { buildSnowProps } from './snow.js';
 import { buildVolcanoProps } from './volcano.js';
+import { buildReefProps } from './reef.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -86,6 +87,15 @@ function volcanoHeight(x, z) {
   return plain + cone + lumps - lavaAt(x, z) * 4;
 }
 
+// Seabed. Rippled sand in broad swells, with reef ridges and the odd deep trough.
+function seabedHeight(x, z) {
+  const swell = fbm(x * 0.0016 + 8.1, z * 0.0016 + 2.2, 3) * 34;
+  const reef = 1 - Math.abs(fbm(x * 0.007 + 1.9, z * 0.007 + 6.4, 3) * 2 - 1);
+  const ridges = reef ** 4 * 14 * smooth(THREE.MathUtils.clamp((Math.hypot(x, z) - 60) / 80, 0, 1));
+  const sand = (fbm(x * 0.02, z * 0.02, 2) - 0.5) * 1.6;
+  return swell + ridges + sand;
+}
+
 // The level is fixed for the page, so every importer gets the same field.
 export const heightAt = {
   desert: duneHeight,
@@ -93,40 +103,75 @@ export const heightAt = {
   grassland: plainsHeight,
   snow: snowHeight,
   volcano: volcanoHeight,
+  ocean: seabedHeight,
 }[LEVEL.id];
 
-// Lava glows through the terrain material: aLava per vertex, an animated crust in the
-// fragment shader, and enough emissive to clear the bloom threshold.
-export const lavaUniforms = { uTime: { value: 0 } };
+// Ground shader extras, by level. Lava glows through the terrain material: aLava per
+// vertex, an animated crust in the fragment shader, and enough emissive to clear the
+// bloom threshold. Underwater, caustics ripple across the lit ground. Both read the
+// world xz of the vertex (chunks and the backdrop are built in world space).
+export const groundUniforms = { uTime: { value: 0 } };
 
-function patchLava(material) {
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = lavaUniforms.uTime;
-    shader.vertexShader = `attribute float aLava;
+const GROUND_NOISE = /* glsl */ `
+uniform float uTime;
 varying float vLava;
-varying vec2 vLavaXZ;
-` + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        vLava = aLava;
-        vLavaXZ = position.xz;`);
-    shader.fragmentShader = `uniform float uTime;
-varying float vLava;
-varying vec2 vLavaXZ;
-float lavaHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float lavaNoise(vec2 p) {
+varying vec2 vGroundXZ;
+float groundHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float groundNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(lavaHash(i), lavaHash(i + vec2(1, 0)), u.x), mix(lavaHash(i + vec2(0, 1)), lavaHash(i + vec2(1, 1)), u.x), u.y);
+  return mix(mix(groundHash(i), groundHash(i + vec2(1, 0)), u.x), mix(groundHash(i + vec2(0, 1)), groundHash(i + vec2(1, 1)), u.x), u.y);
 }
-` + shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      {
-        vec2 q = vLavaXZ * 0.06;
-        float flow = lavaNoise(q + vec2(uTime * 0.07, uTime * 0.04)) * 0.6 + lavaNoise(q * 2.7 - vec2(uTime * 0.05, 0.0)) * 0.4;
-        float crust = smoothstep(0.62, 0.78, flow); // darker plates drifting on the melt
-        float heat = smoothstep(0.15, 0.85, vLava);
-        totalEmissiveRadiance += vec3(1.0, 0.3, 0.04) * heat * mix(3.2, 0.9, crust);
-      }`);
+`;
+
+const LAVA_GLOW = /* glsl */ `
+{
+  vec2 q = vGroundXZ * 0.06;
+  float flow = groundNoise(q + vec2(uTime * 0.07, uTime * 0.04)) * 0.6 + groundNoise(q * 2.7 - vec2(uTime * 0.05, 0.0)) * 0.4;
+  float crust = smoothstep(0.62, 0.78, flow); // darker plates drifting on the melt
+  float heat = smoothstep(0.15, 0.85, vLava);
+  totalEmissiveRadiance += vec3(1.0, 0.3, 0.04) * heat * mix(3.2, 0.9, crust);
+}
+`;
+
+// Water caustics: an iterated interference pattern (the well-known "tileable water
+// caustic" loop), periodic in 2π so the 11 m tiles meet without seams.
+const CAUSTICS = /* glsl */ `
+{
+  const float TAU = 6.2831853;
+  vec2 p = mod(vGroundXZ * (TAU / 11.0), TAU) - 250.0;
+  vec2 i = p;
+  float c = 1.0;
+  float inten = 0.005;
+  for (int n = 0; n < 4; n++) {
+    float t = uTime * 0.45 * (1.0 - 3.5 / float(n + 1));
+    i = p + vec2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
+    c += 1.0 / length(vec2(p.x / (sin(i.x + t) / inten), p.y / (cos(i.y + t) / inten)));
+  }
+  c /= 4.0;
+  c = 1.17 - pow(c, 1.4);
+  float web = clamp(pow(abs(c), 8.0), 0.0, 2.0);
+  reflectedLight.directDiffuse *= 1.0 + web * 1.4;
+  reflectedLight.indirectDiffuse *= 1.0 + web * 0.35;
+}
+`;
+
+function patchGround(material) {
+  if (!LEVEL.lava && !LEVEL.caustics) return;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = groundUniforms.uTime;
+    shader.vertexShader = `attribute float aLava;
+varying float vLava;
+varying vec2 vGroundXZ;
+` + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vLava = aLava;
+        vGroundXZ = position.xz;`);
+    let fs = GROUND_NOISE + shader.fragmentShader;
+    if (LEVEL.lava) fs = fs.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>${LAVA_GLOW}`);
+    if (LEVEL.caustics) fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>${CAUSTICS}`);
+    shader.fragmentShader = fs;
   };
-  material.customProgramCacheKey = () => 'terrain-lava-1';
+  material.customProgramCacheKey = () => `terrain-ground-${LEVEL.id}`;
 }
 
 const LAVA = !!LEVEL.lava;
@@ -231,15 +276,15 @@ function groundColor(x, z, nrm, c, lava = LAVA ? lavaAt(x, z) : 0) {
   return c;
 }
 
-const DESERT = LEVEL.id === 'desert';
 const buildChunkProps = {
   desert: buildDesertProps,
   rainforest: buildJungleProps,
   grassland: buildGrasslandProps,
   snow: buildSnowProps,
   volcano: buildVolcanoProps,
+  ocean: buildReefProps,
 }[LEVEL.id];
-const RIPPLE_TILE = DESERT ? 9 : 6; // metres per ground texture tile
+const RIPPLE_TILE = LEVEL.ground.ripple ? 9 : 6; // metres per ground texture tile
 
 export class Terrain {
   constructor(scene, renderer) {
@@ -251,11 +296,11 @@ export class Terrain {
       vertexColors: true,
       roughness: LEVEL.ground.roughness,
       metalness: 0,
-      normalMap: DESERT ? createNormalMap(rippleHeight, 2.2) : createNormalMap(litterHeight, 6),
+      normalMap: LEVEL.ground.ripple ? createNormalMap(rippleHeight, 2.2) : createNormalMap(litterHeight, 6),
       normalScale: new THREE.Vector2(LEVEL.ground.normalScale, LEVEL.ground.normalScale),
     });
     this.material.normalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    if (LAVA) patchLava(this.material);
+    patchGround(this.material);
     this.lastCenter = null;
     // Breakable props that have been smashed, as `chunkKey:id`, so they stay gone
     // when their chunk streams out and back in.
@@ -275,7 +320,7 @@ export class Terrain {
     const normals = new Float32Array(n * n * 3);
     const colors = new Float32Array(n * n * 3);
     const uvs = new Float32Array(n * n * 2);
-    const lava = LAVA ? new Float32Array(n * n) : null;
+    const lava = LAVA || LEVEL.caustics ? new Float32Array(n * n) : null;
     const nrm = new THREE.Vector3();
     const c = new THREE.Color();
 
@@ -511,7 +556,7 @@ function backdropIndex() {
 export class Backdrop {
   constructor(scene) {
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
-    if (LAVA) patchLava(this.material);
+    patchGround(this.material);
     this.index = backdropIndex();
     this.mesh = null;
     this.scene = scene;

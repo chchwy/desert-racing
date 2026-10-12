@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
-// One level per page load: `?level=rainforest`, `grassland`, `snow` or `volcano`; anything else is the desert.
+// One level per page load: `?level=rainforest`, `grassland`, `snow`, `volcano` or `ocean`;
+// anything else is the desert.
 // Switching reloads the page: heightAt, the props and the sky all read LEVEL at import time.
 
 const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -24,6 +25,7 @@ export const LEVELS = {
       base: srgb(0.87, 0.72, 0.5),
       crest: srgb(0.93, 0.81, 0.62),
       shade: srgb(0.78, 0.6, 0.4),
+      ripple: true,
       roughness: 0.93,
       normalScale: 0.28,
     },
@@ -133,9 +135,40 @@ export const LEVELS = {
     },
     dust: { color: srgb(0.4, 0.36, 0.34), shade: srgb(0.22, 0.2, 0.19) },
   },
+  ocean: {
+    id: 'ocean',
+    name: '海底',
+    title: 'Abyss Rider — prototype',
+    eyebrow: 'ABYSS RIDER / BATTLE PROTOTYPE',
+    headline: '在海底，狩獵。',
+    sub: '懸浮機車原型 · 珊瑚＋魚群 · 地形 endless',
+    page: '#14485c',
+    haze: 0x1a5870,
+    fogNear: 6,
+    fogFar: 340, // water swallows the view fast
+    caustics: true,
+    weather: [
+      // Bubbles rising, then marine snow drifting down.
+      { count: 900, fall: -1.2, fallSpread: -1.8, drift: 0.2, size: 0.05, sizeSpread: 0.06, color: 0xcff6ff, opacity: 0.7 },
+      { count: 2500, fall: 0.25, fallSpread: 0.3, drift: 0.35, size: 0.025, sizeSpread: 0.03, color: 0xd8f0ea, opacity: 0.55 },
+    ],
+    // Looking up: a bright, rippling surface. The cloud layer stands in for the ripples.
+    sky: { zenith: 0x9eeaf4, mid: 0x2f8aa6, cover: 0.2, sun: 0.35, cloud: 0xc8fbff, cloudSpeed: 6, hazeTop: 0.55 },
+    hemi: { sky: 0x9ad8e8, ground: 0x2a4a58, intensity: 1.0 },
+    sun: { color: 0xd8f4ff, intensity: 1.7 },
+    ground: {
+      base: srgb(0.58, 0.6, 0.52),
+      crest: srgb(0.7, 0.71, 0.6),
+      shade: srgb(0.3, 0.36, 0.36), // reef rock
+      ripple: true,
+      roughness: 0.9,
+      normalScale: 0.35,
+    },
+    dust: { color: srgb(0.78, 0.9, 0.92), shade: srgb(0.55, 0.68, 0.7) },
+  },
 };
 
-export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow', 'volcano'];
+export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow', 'volcano', 'ocean'];
 
 function pickLevel() {
   if (typeof location === 'undefined') return LEVELS.desert;

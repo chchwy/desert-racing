@@ -1,6 +1,6 @@
 # Desert Rider
 
-Endless hover-bike prototype (three.js r186, Vite 8) with five levels: desert, rainforest, grassland, snow mountains and volcano. Procedural terrain, one generated cat rider, and streamed props. There is no test runner. `README.md` is stale: it still says the rider is primitives and that there are no external models. Trust the code.
+Endless hover-bike prototype (three.js r186, Vite 8) with six levels: desert, rainforest, grassland, snow mountains, volcano and seabed. Procedural terrain, one generated cat rider, and streamed props. There is no test runner. `README.md` is stale: it still says the rider is primitives and that there are no external models. Trust the code.
 
 The page copy is zh-Hant. Keep new player-facing strings in Traditional Chinese. The HUD counters (擊破 / 捕獲 / 夥伴) are static markup and are not wired to anything.
 
@@ -21,7 +21,7 @@ Vite's default is http://localhost:5173. Port 5173 is often another project on t
 
 URL flags, read in `src/main.js`:
 
-- `?level=rainforest`, `grassland`, `snow` or `volcano`. No flag is the desert.
+- `?level=rainforest`, `grassland`, `snow`, `volcano` or `ocean`. No flag is the desert.
 - `?demo` holds W and weaves with A/D. Useless for checking a fixed heading.
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
@@ -66,7 +66,9 @@ The snow level uses `snowHeight`: a flat valley within ~250 m of the start, ridg
 
 Ice crystals break. A collider may carry `breakable` (the spire record from `crystalCluster`; the cluster's fat core collider belongs to the main spire). Each frame, before `collidersNear` and the physics substeps, `Terrain.smash(pos, pos + vel·dt)` finds breakable colliders on that path, hides the instance, drops its colliders, and returns the spires; `main.js` then plays `Shatter.burst` (pooled instanced shards, `src/shatter.js`) and a frost cloud through `Dust`, trims the bike's speed and shakes the camera. `Terrain.broken` remembers `chunkKey:id` so a smashed spire stays gone when its chunk streams back in. Only snow props return `breakables`.
 
-The volcano level uses `volcanoHeight`. `src/lava.js` holds `VOLCANO` (a 460 m cone about 1.5 km out, with a crater) and `lavaAt` (0..1: warped plain channels, streams down the flanks, the crater lake); the height field carves the lava 4 m down. With `LEVEL.lava`, chunks and the backdrop carry an `aLava` vertex attribute and `patchLava` adds animated emissive past the bloom threshold, driven by `lavaUniforms.uTime`. `lava.js` exists so `terrain.js` and `volcano.js` do not import each other. `buildVolcanoProps` places basalt column stands, ember rocks and charred trees only where `lavaAt` is dry, and the lava pool at the landmark spot returns `props.vent`. `main.js` hangs a `Plume` (`src/plume.js`) over the crater and the pool. The volcano also uses the backdrop and two `Weather` sets (rising embers, falling ash). `LEVEL.sky.cloud` tints the clouds.
+The volcano level uses `volcanoHeight`. `src/lava.js` holds `VOLCANO` (a 460 m cone about 1.5 km out, with a crater) and `lavaAt` (0..1: warped plain channels, streams down the flanks, the crater lake); the height field carves the lava 4 m down. With `LEVEL.lava`, chunks and the backdrop carry an `aLava` vertex attribute and `patchGround` adds animated emissive past the bloom threshold, driven by `groundUniforms.uTime`. `lava.js` exists so `terrain.js` and `volcano.js` do not import each other. `buildVolcanoProps` places basalt column stands, ember rocks and charred trees only where `lavaAt` is dry, and the lava pool at the landmark spot returns `props.vent`. `main.js` hangs a `Plume` (`src/plume.js`) over the crater and the pool. The volcano also uses the backdrop and two `Weather` sets (rising embers, falling ash). `LEVEL.sky.cloud` tints the clouds.
+
+The ocean level uses `seabedHeight` (rippled sand swells and reef ridges) and `buildReefProps`: kelp forests and coral gardens placed by two noise fields, reef rock piles, and a shipwreck on its side at the landmark spot with colliders down its keel. Kelp sways in its own vertex shader (`swellUniforms`); only big brain corals, rocks and the wreck have colliders. `LEVEL.caustics` makes `patchGround` brighten the lit ground with a tileable water-caustic loop. The sky reads as the water surface from below: `sky.hazeTop` keeps the fog color high above the horizon, and fast bright clouds (`sky.cloudSpeed`) stand in for surface ripples. `FishSchools` (`src/fish.js`) keeps seven schools wandering near the bike, wiggles tails in the vertex shader with `gl_InstanceID`, scatters fish away from the bike, and respawns schools that fall 150 m behind. Fog is short (far 340). Bubbles and marine snow are two `Weather` sets.
 
 ## Map
 
@@ -90,6 +92,8 @@ The volcano level uses `volcanoHeight`. `src/lava.js` holds `VOLCANO` (a 460 m c
 | `src/lava.js` | Volcano cone position and `lavaAt` |
 | `src/volcano.js` | Basalt columns, ember rocks, dead trees, lava pool |
 | `src/plume.js` | Smoke columns over the crater and the pool |
+| `src/reef.js` | Kelp, corals, reef rocks, shipwreck |
+| `src/fish.js` | Fish schools that scatter from the bike |
 | `src/noise.js` | `fbm`, `mulberry32`, `hashSeed` |
 | `src/sky.js` | Sky dome. `SUN_DIR`, `HAZE_COLOR` |
 | `src/effects.js` | Dust, ribbons, speed lines |
