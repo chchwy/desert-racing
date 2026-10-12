@@ -5,7 +5,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 
-import { Terrain, Backdrop, heightAt } from './terrain.js';
+import { Terrain, Backdrop, heightAt, lavaUniforms } from './terrain.js';
+import { VOLCANO } from './lava.js';
+import { Plume } from './plume.js';
 import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -14,7 +16,7 @@ import { Input, Player } from './player.js';
 import { ChaseCamera } from './camera.js';
 import { LEVEL, LEVELS, LEVEL_ORDER, switchLevel } from './levels.js';
 import { Grass } from './grass.js';
-import { Snowfall } from './snowfall.js';
+import { Weather } from './weather.js';
 import { Shatter } from './shatter.js';
 import { ice } from './snow.js';
 
@@ -62,11 +64,29 @@ scene.add(bike.root);
 const grass = LEVEL.id === 'grassland' ? new Grass(scene) : null;
 grass?.update(player.pos, player.pos, 0, true);
 
-// Snow mountains: far peaks past the streamed chunks, and falling snow.
+// Far peaks past the streamed chunks, and weather particles around the camera.
 const backdrop = LEVEL.backdrop ? new Backdrop(scene) : null;
 backdrop?.update(player.pos, true);
-const snowfall = LEVEL.snowfall ? new Snowfall(scene) : null;
+const weather = (LEVEL.weather ?? []).map((w) => new Weather(scene, w));
 const shatter = LEVEL.id === 'snow' ? new Shatter(scene, ice) : null;
+
+// Volcano: an ash column over the crater, seen from kilometres away, and a smaller
+// smoking, ember-lit plume over the lava pool ahead of the start.
+const plumes = [];
+if (LEVEL.id === 'volcano') {
+  const craterY = heightAt(VOLCANO.x, VOLCANO.z);
+  plumes.push(new Plume(scene, {
+    x: VOLCANO.x, y: craterY + 10, z: VOLCANO.z, count: 260, life: 26, rise: 22, spread: 140,
+    size0: 90, size1: 420, smoke: 0x3c3532, glow: 0xff6a2a, opacity: 0.75, wind: [320, 120],
+  }));
+  const vent = terrain.chunks.get('0,0')?.props.vent;
+  if (vent) {
+    plumes.push(new Plume(scene, {
+      x: vent.x, y: vent.y, z: vent.z, count: 90, life: 7, rise: 5, spread: 9,
+      size0: 4, size1: 22, smoke: 0x4a403c, glow: 0xff7a30, opacity: 0.5, wind: [8, 3],
+    }));
+  }
+}
 
 const dust = new Dust(scene);
 const trails = [new Ribbon(scene), new Ribbon(scene)];
@@ -109,7 +129,8 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   dust.setViewportHeight(h * renderer.getPixelRatio());
-  snowfall?.setViewportHeight(h * renderer.getPixelRatio());
+  for (const p of plumes) p.setViewportHeight(h * renderer.getPixelRatio());
+  for (const w of weather) w.setViewportHeight(h * renderer.getPixelRatio());
 }
 addEventListener('resize', resize);
 resize();
@@ -122,7 +143,7 @@ document.getElementById('eyebrow').textContent = LEVEL.eyebrow;
 document.getElementById('headline').textContent = LEVEL.headline;
 document.getElementById('sub').textContent = LEVEL.sub;
 
-// Level picker: buttons, or keys 1 to 4. Picking reloads the page on that level.
+// Level picker: buttons, or the number keys. Picking reloads the page on that level.
 const picker = document.getElementById('levels');
 LEVEL_ORDER.forEach((id, i) => {
   const btn = document.createElement('button');
@@ -133,8 +154,8 @@ LEVEL_ORDER.forEach((id, i) => {
   picker.appendChild(btn);
 });
 addEventListener('keydown', (e) => {
-  const i = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
-  if (i >= 0) switchLevel(LEVEL_ORDER[i]);
+  const i = e.code.startsWith('Digit') ? Number(e.code.slice(5)) - 1 : -1;
+  if (i >= 0 && i < LEVEL_ORDER.length) switchLevel(LEVEL_ORDER[i]);
 });
 
 const hud = {
@@ -263,7 +284,9 @@ function frame(timestamp) {
 
   grass?.update(player.pos, camera.position, time);
   backdrop?.update(player.pos);
-  snowfall?.update(time, camera.position);
+  for (const w of weather) w.update(time, camera.position);
+  for (const p of plumes) p.update(time);
+  lavaUniforms.uTime.value = time;
 
   sky.position.copy(camera.position);
   sky.material.uniforms.uTime.value = time;

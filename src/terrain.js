@@ -1,16 +1,20 @@
 import * as THREE from 'three';
 import { fbm, valueNoise } from './noise.js';
 import { LEVEL } from './levels.js';
+import { lavaAt, VOLCANO } from './lava.js';
 import { buildChunkProps as buildDesertProps, pyramidFace } from './props.js';
 import { buildJungleProps } from './jungle.js';
 import { buildGrasslandProps } from './grassland.js';
 import { buildSnowProps } from './snow.js';
+import { buildVolcanoProps } from './volcano.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
 const CHUNK_SEGMENTS = 64;
 const VIEW_RADIUS = 4; // chunks around the player
-const MAX_BUILDS_PER_FRAME = 2;
+// One per frame: a chunk costs 8–20 ms, and even at top speed a new row of chunks is
+// needed only every few seconds.
+const MAX_BUILDS_PER_FRAME = 1;
 
 const smooth = (t) => t * t * (3 - 2 * t);
 
@@ -64,8 +68,68 @@ function snowHeight(x, z) {
   return peaks + floor + lumps;
 }
 
+// Volcano. A big cone with a lava-filled crater stands about 1.5 km out (lava.js); around
+// the start is a rugged basalt plain cut by glowing lava channels.
+function volcanoHeight(x, z) {
+  const ridge = 1 - Math.abs(fbm(x * 0.006 + 2.9, z * 0.006 + 5.3, 3) * 2 - 1);
+  const rugged = fbm(x * 0.004 + 6.1, z * 0.004 + 0.7, 4) * 20 + ridge * ridge * 7;
+  const swell = fbm(x * 0.0012 + 3.7, z * 0.0012 + 9.2, 3) * 30;
+  const r = Math.hypot(x - VOLCANO.x, z - VOLCANO.z);
+  const { radius: R, height: H, crater: CR, craterDepth: CD } = VOLCANO;
+  let cone = 0;
+  if (r < R) {
+    const rim = H * (1 - CR / R) ** 1.8;
+    cone = r > CR ? H * (1 - r / R) ** 1.8 : rim - CD * (1 - (r / CR) ** 2);
+  }
+  const plain = (rugged + swell) * (1 - smooth(THREE.MathUtils.clamp(1 - r / R, 0, 1)) * 0.7);
+  const lumps = (fbm(x * 0.035, z * 0.035, 2) - 0.5) * 1.2;
+  return plain + cone + lumps - lavaAt(x, z) * 4;
+}
+
 // The level is fixed for the page, so every importer gets the same field.
-export const heightAt = { desert: duneHeight, rainforest: jungleHeight, grassland: plainsHeight, snow: snowHeight }[LEVEL.id];
+export const heightAt = {
+  desert: duneHeight,
+  rainforest: jungleHeight,
+  grassland: plainsHeight,
+  snow: snowHeight,
+  volcano: volcanoHeight,
+}[LEVEL.id];
+
+// Lava glows through the terrain material: aLava per vertex, an animated crust in the
+// fragment shader, and enough emissive to clear the bloom threshold.
+export const lavaUniforms = { uTime: { value: 0 } };
+
+function patchLava(material) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = lavaUniforms.uTime;
+    shader.vertexShader = `attribute float aLava;
+varying float vLava;
+varying vec2 vLavaXZ;
+` + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vLava = aLava;
+        vLavaXZ = position.xz;`);
+    shader.fragmentShader = `uniform float uTime;
+varying float vLava;
+varying vec2 vLavaXZ;
+float lavaHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float lavaNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(lavaHash(i), lavaHash(i + vec2(1, 0)), u.x), mix(lavaHash(i + vec2(0, 1)), lavaHash(i + vec2(1, 1)), u.x), u.y);
+}
+` + shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      {
+        vec2 q = vLavaXZ * 0.06;
+        float flow = lavaNoise(q + vec2(uTime * 0.07, uTime * 0.04)) * 0.6 + lavaNoise(q * 2.7 - vec2(uTime * 0.05, 0.0)) * 0.4;
+        float crust = smoothstep(0.62, 0.78, flow); // darker plates drifting on the melt
+        float heat = smoothstep(0.15, 0.85, vLava);
+        totalEmissiveRadiance += vec3(1.0, 0.3, 0.04) * heat * mix(3.2, 0.9, crust);
+      }`);
+  };
+  material.customProgramCacheKey = () => 'terrain-lava-1';
+}
+
+const LAVA = !!LEVEL.lava;
 
 export function normalAt(x, z, target = new THREE.Vector3(), eps = 1.0) {
   const hx = heightAt(x + eps, z) - heightAt(x - eps, z);
@@ -156,13 +220,15 @@ function breakProp(props, b) {
 }
 
 // Steeper slopes take the shade color, flats and crests the light one.
-function groundColor(x, z, nrm, c) {
+function groundColor(x, z, nrm, c, lava = LAVA ? lavaAt(x, z) : 0) {
   const { base, crest, shade, steep = [3, 0.2, 0.7] } = LEVEL.ground;
   const slope = 1 - nrm.y;
   const tint = fbm(x * 0.01 + 50, z * 0.01, 2);
   c.copy(base).lerp(crest, THREE.MathUtils.clamp(0.6 - slope * 4 + (tint - 0.5), 0, 1));
   const [gain, offset, most] = steep;
-  return c.lerp(shade, THREE.MathUtils.clamp(slope * gain - offset, 0, most));
+  c.lerp(shade, THREE.MathUtils.clamp(slope * gain - offset, 0, most));
+  if (lava > 0) c.lerp(LEVEL.ground.lava, lava);
+  return c;
 }
 
 const DESERT = LEVEL.id === 'desert';
@@ -171,6 +237,7 @@ const buildChunkProps = {
   rainforest: buildJungleProps,
   grassland: buildGrasslandProps,
   snow: buildSnowProps,
+  volcano: buildVolcanoProps,
 }[LEVEL.id];
 const RIPPLE_TILE = DESERT ? 9 : 6; // metres per ground texture tile
 
@@ -188,6 +255,7 @@ export class Terrain {
       normalScale: new THREE.Vector2(LEVEL.ground.normalScale, LEVEL.ground.normalScale),
     });
     this.material.normalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    if (LAVA) patchLava(this.material);
     this.lastCenter = null;
     // Breakable props that have been smashed, as `chunkKey:id`, so they stay gone
     // when their chunk streams out and back in.
@@ -207,6 +275,7 @@ export class Terrain {
     const normals = new Float32Array(n * n * 3);
     const colors = new Float32Array(n * n * 3);
     const uvs = new Float32Array(n * n * 2);
+    const lava = LAVA ? new Float32Array(n * n) : null;
     const nrm = new THREE.Vector3();
     const c = new THREE.Color();
 
@@ -223,10 +292,12 @@ export class Terrain {
         normals[k * 3] = nrm.x;
         normals[k * 3 + 1] = nrm.y;
         normals[k * 3 + 2] = nrm.z;
-        groundColor(x, z, nrm, c);
+        const lv = LAVA ? lavaAt(x, z) : 0;
+        groundColor(x, z, nrm, c, lv);
         colors[k * 3] = c.r;
         colors[k * 3 + 1] = c.g;
         colors[k * 3 + 2] = c.b;
+        if (lava) lava[k] = lv;
         uvs[k * 2] = x / RIPPLE_TILE;
         uvs[k * 2 + 1] = z / RIPPLE_TILE;
       }
@@ -250,6 +321,7 @@ export class Terrain {
     geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    if (lava) geo.setAttribute('aLava', new THREE.BufferAttribute(lava, 1));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     geo.computeTangents();
     geo.computeBoundingSphere();
@@ -439,6 +511,7 @@ function backdropIndex() {
 export class Backdrop {
   constructor(scene) {
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+    if (LAVA) patchLava(this.material);
     this.index = backdropIndex();
     this.mesh = null;
     this.scene = scene;
@@ -453,7 +526,11 @@ export class Backdrop {
     if (moved && !this.job) {
       this.center = { x: position.x, z: position.z };
       const size = BACKDROP_ANGLES * BACKDROP_RINGS * 3;
-      this.job = { cx: position.x, cz: position.z, ring: 0, pos: new Float32Array(size), nrm: new Float32Array(size), col: new Float32Array(size) };
+      this.job = {
+        cx: position.x, cz: position.z, ring: 0,
+        pos: new Float32Array(size), nrm: new Float32Array(size), col: new Float32Array(size),
+        lava: new Float32Array(size / 3),
+      };
     }
     if (!this.job) return;
     const job = this.job;
@@ -475,8 +552,10 @@ export class Backdrop {
         job.pos[k + 2] = z;
         normalAt(x, z, n, eps);
         job.nrm[k] = n.x; job.nrm[k + 1] = n.y; job.nrm[k + 2] = n.z;
-        groundColor(x, z, n, c);
+        const lv = LAVA ? lavaAt(x, z) : 0;
+        groundColor(x, z, n, c, lv);
         job.col[k] = c.r; job.col[k + 1] = c.g; job.col[k + 2] = c.b;
+        job.lava[k / 3] = lv;
       }
     }
     job.ring = end;
@@ -486,6 +565,7 @@ export class Backdrop {
     geo.setAttribute('position', new THREE.BufferAttribute(job.pos, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(job.nrm, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(job.col, 3));
+    geo.setAttribute('aLava', new THREE.BufferAttribute(job.lava, 1));
     geo.setIndex(this.index);
     geo.computeBoundingSphere();
     if (this.mesh) {

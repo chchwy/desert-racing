@@ -1,6 +1,6 @@
 # Desert Rider
 
-Endless hover-bike prototype (three.js r186, Vite 8) with four levels: desert, rainforest, grassland and snow mountains. Procedural terrain, one generated cat rider, and streamed props. There is no test runner. `README.md` is stale: it still says the rider is primitives and that there are no external models. Trust the code.
+Endless hover-bike prototype (three.js r186, Vite 8) with five levels: desert, rainforest, grassland, snow mountains and volcano. Procedural terrain, one generated cat rider, and streamed props. There is no test runner. `README.md` is stale: it still says the rider is primitives and that there are no external models. Trust the code.
 
 The page copy is zh-Hant. Keep new player-facing strings in Traditional Chinese. The HUD counters (擊破 / 捕獲 / 夥伴) are static markup and are not wired to anything.
 
@@ -21,7 +21,7 @@ Vite's default is http://localhost:5173. Port 5173 is often another project on t
 
 URL flags, read in `src/main.js`:
 
-- `?level=rainforest`, `?level=grassland` or `?level=snow`. No flag is the desert.
+- `?level=rainforest`, `grassland`, `snow` or `volcano`. No flag is the desert.
 - `?demo` holds W and weaves with A/D. Useless for checking a fixed heading.
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
@@ -54,7 +54,7 @@ Bike space is **+Z forward, +Y up, +X to the rider's left**. This is not three.j
 
 ## Levels
 
-`LEVEL` is fixed for the page load. `heightAt`, the chunk props, the sky, the fog and the dust tint all read it at import time, so the picker (HUD buttons, keys 1 to 4) reloads the page with `?level=` instead of swapping the world in place. Keep the other URL flags when switching (`switchLevel` does).
+`LEVEL` is fixed for the page load. `heightAt`, the chunk props, the sky, the fog and the dust tint all read it at import time, so the picker (HUD buttons, number keys) reloads the page with `?level=` instead of swapping the world in place. Keep the other URL flags when switching (`switchLevel` does).
 
 The rainforest uses `jungleHeight` and `buildJungleProps`; the desert code paths are unchanged. Trees, palms, ferns and boulders are one `InstancedMesh` per kind per chunk, and `disposeChunk` disposes them. Trunks, palms, boulders and the temple shrine have colliders. Ferns and canopy do not. Jungle placement seeds from `hashSeed(cx + 3000, cz - 3000)`, separate from the desert seed.
 
@@ -62,9 +62,11 @@ The jungle landmark at `(149, 118)` is a stepped temple on the pyramid slope rec
 
 The grassland uses `plainsHeight` and `buildGrasslandProps` (acacias, granite outcrops, a giant acacia at the landmark spot). Its tall grass is `src/grass.js`, not chunk props: 20 m tiles of pooled `InstancedMesh` tufts within 100 m of the bike, thinned by `count` toward the rim (tufts are written in random order, so a lower count thins evenly). The grass shader replaces `project_vertex` and bends in world space after instancing: wind gusts, the bike parting the grass, blades lying down near the camera, and the rim shrinking to the ground. Grass has no colliders and casts no shadow. The grassland ground colors are matched to the far grass so the patch rim does not show.
 
-The snow level uses `snowHeight`: a flat valley within ~250 m of the start, ridged peaks up to ~330 m beyond it. `buildSnowProps` places pine stands below `TREE_LINE`, snow-capped boulders, and an emissive ice-crystal cluster at the landmark spot. `LEVEL.ground.steep` sets where the shade (rock) color takes over in `groundColor`; on snow it starts near 40°. Two snow-only extras hang off `LEVEL` flags: `Backdrop` (`backdrop: true`, in `terrain.js`) is a low-res ring of the same height field from 700 m to 6 km, sunk 8 m under the chunks, rebuilt every 150 m of travel a few rings per frame so it does not hitch. `Snowfall` (`snowfall: true`, `src/snowfall.js`) wraps flakes in a box around the camera in the shader. The white HUD text gets a darker halo through `body[data-level="snow"]`.
+The snow level uses `snowHeight`: a flat valley within ~250 m of the start, ridged peaks up to ~330 m beyond it. `buildSnowProps` places pine stands below `TREE_LINE`, snow-capped boulders, and an emissive ice-crystal cluster at the landmark spot. `LEVEL.ground.steep` sets where the shade (rock) color takes over in `groundColor`; on snow it starts near 40°. Two extras hang off `LEVEL` flags: `Backdrop` (`backdrop: true`, in `terrain.js`) is a low-res ring of the same height field from 700 m to 6 km, sunk 8 m under the chunks, rebuilt every 150 m of travel a few rings per frame so it does not hitch. `Weather` (`LEVEL.weather`, a list of option sets, `src/weather.js`) wraps particles in a box around the camera in the shader; snow is the defaults. The white HUD text gets a darker halo through `body[data-level="snow"]`.
 
 Ice crystals break. A collider may carry `breakable` (the spire record from `crystalCluster`; the cluster's fat core collider belongs to the main spire). Each frame, before `collidersNear` and the physics substeps, `Terrain.smash(pos, pos + vel·dt)` finds breakable colliders on that path, hides the instance, drops its colliders, and returns the spires; `main.js` then plays `Shatter.burst` (pooled instanced shards, `src/shatter.js`) and a frost cloud through `Dust`, trims the bike's speed and shakes the camera. `Terrain.broken` remembers `chunkKey:id` so a smashed spire stays gone when its chunk streams back in. Only snow props return `breakables`.
+
+The volcano level uses `volcanoHeight`. `src/lava.js` holds `VOLCANO` (a 460 m cone about 1.5 km out, with a crater) and `lavaAt` (0..1: warped plain channels, streams down the flanks, the crater lake); the height field carves the lava 4 m down. With `LEVEL.lava`, chunks and the backdrop carry an `aLava` vertex attribute and `patchLava` adds animated emissive past the bloom threshold, driven by `lavaUniforms.uTime`. `lava.js` exists so `terrain.js` and `volcano.js` do not import each other. `buildVolcanoProps` places basalt column stands, ember rocks and charred trees only where `lavaAt` is dry, and the lava pool at the landmark spot returns `props.vent`. `main.js` hangs a `Plume` (`src/plume.js`) over the crater and the pool. The volcano also uses the backdrop and two `Weather` sets (rising embers, falling ash). `LEVEL.sky.cloud` tints the clouds.
 
 ## Map
 
@@ -83,15 +85,18 @@ Ice crystals break. A collider may carry `breakable` (the spire record from `cry
 | `src/grassland.js` | Prairie acacias, outcrops, giant landmark tree |
 | `src/grass.js` | Streamed tall grass with wind and bike parting |
 | `src/snow.js` | Snowy pines, capped boulders, ice crystals |
-| `src/snowfall.js` | Falling snow around the camera |
+| `src/weather.js` | Snow, ash and ember particles around the camera |
 | `src/shatter.js` | Ice shards when a crystal is smashed |
+| `src/lava.js` | Volcano cone position and `lavaAt` |
+| `src/volcano.js` | Basalt columns, ember rocks, dead trees, lava pool |
+| `src/plume.js` | Smoke columns over the crater and the pool |
 | `src/noise.js` | `fbm`, `mulberry32`, `hashSeed` |
 | `src/sky.js` | Sky dome. `SUN_DIR`, `HAZE_COLOR` |
 | `src/effects.js` | Dust, ribbons, speed lines |
 
 `heightAt(x, z)` is the sand. The hover floor and the camera's ground clamp use `Terrain.floorAt`, which is the sand unless a pyramid face is higher. Do not point the bike back at `heightAt` alone or it will drive through the pyramids.
 
-Chunks are 200 m (`CHUNK_SIZE`). `VIEW_RADIUS` is 4. At most two chunks build per frame after the first forced fill. `Terrain.collidersNear` only returns props from the 3×3 chunks around the bike, and the push happens after integration, so a fast bike can clip a thin obstacle. Big silhouettes need a fat base collider.
+Chunks are 200 m (`CHUNK_SIZE`). `VIEW_RADIUS` is 4. One chunk builds per frame after the first forced fill: a build costs 8–20 ms depending on the level, and two per frame showed up as hitches. `Terrain.collidersNear` only returns props from the 3×3 chunks around the bike, and the push happens after integration, so a fast bike can clip a thin obstacle. Big silhouettes need a fat base collider.
 
 ## Colliders
 

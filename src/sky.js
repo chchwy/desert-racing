@@ -21,6 +21,7 @@ const fragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uCover; // extra cloud cover, 0 = clear desert sky
   uniform float uSun;   // sun disc and glow strength
+  uniform vec3 uCloud;  // cloud tint, white by default
   varying vec3 vDir;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -57,7 +58,7 @@ const fragmentShader = /* glsl */ `
       float cover = smoothstep(0.48 - uCover, 0.78 - uCover * 0.5, n * 0.8 + n2 * 0.3);
       float shade = smoothstep(0.4, 0.9, fbm(uv + uSunDir.xz * 0.08));
       vec3 cloudCol = mix(vec3(1.05, 1.05, 1.08), vec3(0.72, 0.78, 0.88), shade * 0.7);
-      cloudCol += vec3(1.0, 0.95, 0.85) * pow(sd, 6.0) * 0.6;
+      cloudCol = cloudCol * uCloud + vec3(1.0, 0.95, 0.85) * pow(sd, 6.0) * 0.6;
       float fade = smoothstep(0.02, 0.22, y);
       col = mix(col, cloudCol, cover * fade * 0.95);
     }
@@ -81,6 +82,7 @@ export function createSky() {
       uTime: { value: 0 },
       uCover: { value: LEVEL.sky.cover },
       uSun: { value: LEVEL.sky.sun },
+      uCloud: { value: new THREE.Color(LEVEL.sky.cloud ?? 0xffffff) },
     },
     side: THREE.BackSide,
     depthWrite: false,

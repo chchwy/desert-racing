@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// One level per page load: `?level=rainforest`, `grassland` or `snow`; anything else is the desert.
+// One level per page load: `?level=rainforest`, `grassland`, `snow` or `volcano`; anything else is the desert.
 // Switching reloads the page: heightAt, the props and the sky all read LEVEL at import time.
 
 const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -88,7 +88,7 @@ export const LEVELS = {
     fogNear: 160,
     fogFar: 5200, // the backdrop range reaches 6 km, so distant peaks fade instead of ending
     backdrop: true,
-    snowfall: true,
+    weather: [{}], // snow, the Weather defaults
     sky: { zenith: 0x2a62b8, mid: 0x93b6dc, cover: 0.14, sun: 1.1 },
     hemi: { sky: 0xdfeaff, ground: 0x8a93a8, intensity: 0.85 },
     sun: { color: 0xfff8f0, intensity: 2.3 },
@@ -102,9 +102,40 @@ export const LEVELS = {
     },
     dust: { color: srgb(0.96, 0.97, 1.0), shade: srgb(0.78, 0.82, 0.9) },
   },
+  volcano: {
+    id: 'volcano',
+    name: '火山',
+    title: 'Ember Rider — prototype',
+    eyebrow: 'EMBER RIDER / BATTLE PROTOTYPE',
+    headline: '在熔岩，狩獵。',
+    sub: '懸浮機車原型 · 熔岩＋火山灰 · 地形 endless',
+    page: '#4a332c',
+    haze: 0x5a3c32,
+    fogNear: 90,
+    fogFar: 3400,
+    backdrop: true,
+    lava: true,
+    weather: [
+      // Embers rising and flickering, then ash drifting down.
+      { count: 1400, fall: -1.4, fallSpread: -2.2, drift: 0.6, size: 0.05, sizeSpread: 0.05, color: 0xff7a2a, opacity: 1, additive: true, flicker: 0.7 },
+      { count: 3000, fall: 0.7, fallSpread: 0.8, drift: 1.4, size: 0.05, sizeSpread: 0.04, color: 0x8a8580, opacity: 0.55 },
+    ],
+    sky: { zenith: 0x2a1c1a, mid: 0x6a3a2c, cover: 0.55, sun: 0.45, cloud: 0x6e5a52 },
+    hemi: { sky: 0xb08070, ground: 0x2a1a14, intensity: 0.75 },
+    sun: { color: 0xffb27a, intensity: 1.7 },
+    ground: {
+      base: srgb(0.13, 0.115, 0.11),
+      crest: srgb(0.22, 0.19, 0.17),
+      shade: srgb(0.07, 0.06, 0.06),
+      lava: srgb(0.45, 0.1, 0.02),
+      roughness: 0.88,
+      normalScale: 0.5,
+    },
+    dust: { color: srgb(0.4, 0.36, 0.34), shade: srgb(0.22, 0.2, 0.19) },
+  },
 };
 
-export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow'];
+export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow', 'volcano'];
 
 function pickLevel() {
   if (typeof location === 'undefined') return LEVELS.desert;
