@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { mulberry32, hashSeed } from './noise.js';
 
 // Shared resources; chunk groups only hold meshes referencing these.
-const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+export const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const cylGeo = new THREE.CylinderGeometry(1, 1.08, 1, 10, 1);
-const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+export const rockGeo = new THREE.DodecahedronGeometry(1, 0);
 const coneGeo = new THREE.ConeGeometry(1, 1, 4, 1);
 
 const stone = new THREE.MeshStandardMaterial({
@@ -29,13 +29,13 @@ const limestoneDark = new THREE.MeshStandardMaterial({
 });
 // rotation.y = yaw sends local +x to (cos yaw, 0, -sin yaw) and local +z to (sin yaw, 0, cos yaw).
 // Meshes and pyramid colliders both go through this, so a face and its collider share one basis.
-function yawOffset(yaw, lx, lz) {
+export function yawOffset(yaw, lx, lz) {
   const c = Math.cos(yaw);
   const s = Math.sin(yaw);
   return [lx * c + lz * s, -lx * s + lz * c];
 }
 
-function addMesh(group, geo, mat, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
+export function addMesh(group, geo, mat, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   m.scale.set(sx, sy, sz);
@@ -46,7 +46,7 @@ function addMesh(group, geo, mat, x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
   return m;
 }
 
-function groundMin(heightAt, x, z, r) {
+export function groundMin(heightAt, x, z, r) {
   let h = heightAt(x, z);
   for (let a = 0; a < 6; a++) {
     const t = (a / 6) * Math.PI * 2;
@@ -172,7 +172,10 @@ export function pyramidFace(p, x, z) {
   if (ax <= p.half && az <= p.half) {
     const m = Math.max(ax, az);
     const coneY = p.coneBase + (p.apexY - p.coneBase) * (1 - m / p.half);
-    if (coneY > y) {
+    // A stepped temple (jungle.js) caps the taper at its flat top.
+    if (p.flatY !== undefined && coneY >= p.flatY) {
+      y = Math.max(y, p.flatY);
+    } else if (coneY > y) {
       y = coneY;
       const inv = (p.apexY - p.coneBase) / p.half;
       if (ax >= az) dlx = -inv * Math.sign(lx || 1);
@@ -228,9 +231,9 @@ function rocks(group, colliders, rng, x, z, heightAt) {
 }
 
 // Ahead of the start, on a flat patch at about the same height as the spawn.
-const LANDMARK_X = 149;
-const LANDMARK_Z = 118;
-const LANDMARK_CLEAR = 105;
+export const LANDMARK_X = 149;
+export const LANDMARK_Z = 118;
+export const LANDMARK_CLEAR = 105;
 
 export function buildChunkProps(cx, cz, size, heightAt) {
   const group = new THREE.Group();

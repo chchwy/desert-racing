@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { fbm } from './noise.js';
-import { buildChunkProps, pyramidFace } from './props.js';
+import { fbm, valueNoise } from './noise.js';
+import { LEVEL } from './levels.js';
+import { buildChunkProps as buildDesertProps, pyramidFace } from './props.js';
+import { buildJungleProps } from './jungle.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -12,7 +14,7 @@ const smooth = (t) => t * t * (3 - 2 * t);
 
 // Dune height field. Asymmetric ridges (gentle windward side, steep lee side)
 // laid along a domain-warped wind direction, on top of broad rolling swells.
-export function heightAt(x, z) {
+function duneHeight(x, z) {
   const wx = x + (fbm(x * 0.0025, z * 0.0025, 3) - 0.5) * 170;
   const wz = z + (fbm(x * 0.0025 + 31.7, z * 0.0025 + 11.3, 3) - 0.5) * 170;
 
@@ -26,37 +28,72 @@ export function heightAt(x, z) {
   return ridge * ridgeAmp + swell + bumps;
 }
 
+// Jungle floor. Rounded ridged hills over broad swells, with root-and-moss lumps.
+function jungleHeight(x, z) {
+  const wx = x + (fbm(x * 0.002 + 4.1, z * 0.002, 3) - 0.5) * 120;
+  const wz = z + (fbm(x * 0.002, z * 0.002 + 8.7, 3) - 0.5) * 120;
+  const r = 1 - Math.abs(fbm(wx * 0.0042, wz * 0.0042, 3) * 2 - 1);
+  const hills = r * r * 26;
+  const swell = fbm(x * 0.0012 + 3.3, z * 0.0012 + 1.9, 3) * 50;
+  const lumps = (fbm(x * 0.03, z * 0.03, 2) - 0.5) * 1.4;
+  return hills + swell + lumps;
+}
+
+// The level is fixed for the page, so every importer gets the same field.
+export const heightAt = LEVEL.id === 'rainforest' ? jungleHeight : duneHeight;
+
 export function normalAt(x, z, target = new THREE.Vector3(), eps = 1.0) {
   const hx = heightAt(x + eps, z) - heightAt(x - eps, z);
   const hz = heightAt(x, z + eps) - heightAt(x, z - eps);
   return target.set(-hx, 2 * eps, -hz).normalize();
 }
 
-// Tileable wind-ripple normal map, generated once on a canvas.
-function createRippleNormalMap(size = 512) {
-  const TAU = Math.PI * 2;
+const TAU = Math.PI * 2;
+
+// Wind ripples, like the dunes in miniature.
+function rippleHeight(u, v) {
+  const phase =
+    11 * u +
+    0.45 * Math.sin(TAU * (2 * v + u)) +
+    0.2 * Math.sin(TAU * (5 * v - 2 * u)) +
+    0.08 * Math.sin(TAU * (13 * v + 3 * u));
+  const p = phase - Math.floor(phase);
+  const r = p < 0.7 ? smooth(p / 0.7) : smooth(1 - (p - 0.7) / 0.3);
+  const fine = 0.12 * Math.sin(TAU * (37 * u + 4 * Math.sin(TAU * 3 * v)));
+  return r + fine;
+}
+
+// Leaf litter and moss clumps: tileable value noise (lattice wraps at the period).
+function litterHeight(u, v) {
+  const tile = (f, p) => {
+    const x = u * p;
+    const y = v * p;
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const fx = x - ix;
+    const fy = y - iy;
+    const g = (a, b) => valueNoise(((a % p) + p) % p, ((b % p) + p) % p);
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const top = g(ix, iy) + (g(ix + 1, iy) - g(ix, iy)) * sx;
+    const bot = g(ix, iy + 1) + (g(ix + 1, iy + 1) - g(ix, iy + 1)) * sx;
+    return (top + (bot - top) * sy) * f;
+  };
+  return tile(0.7, 8) + tile(0.35, 23) + tile(0.18, 61);
+}
+
+// Tileable normal map from a height function on the unit square, generated once on a canvas.
+function createNormalMap(heightFn, strength, size = 512) {
   const h = new Float32Array(size * size);
   for (let j = 0; j < size; j++) {
     for (let i = 0; i < size; i++) {
-      const u = i / size;
-      const v = j / size;
-      const phase =
-        11 * u +
-        0.45 * Math.sin(TAU * (2 * v + u)) +
-        0.2 * Math.sin(TAU * (5 * v - 2 * u)) +
-        0.08 * Math.sin(TAU * (13 * v + 3 * u));
-      const p = phase - Math.floor(phase);
-      // asymmetric ripple profile, like the dunes in miniature
-      const r = p < 0.7 ? smooth(p / 0.7) : smooth(1 - (p - 0.7) / 0.3);
-      const fine = 0.12 * Math.sin(TAU * (37 * u + 4 * Math.sin(TAU * 3 * v)));
-      h[j * size + i] = r + fine;
+      h[j * size + i] = heightFn(i / size, j / size);
     }
   }
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(size, size);
-  const strength = 2.2;
   for (let j = 0; j < size; j++) {
     for (let i = 0; i < size; i++) {
       const l = h[j * size + ((i - 1 + size) % size)];
@@ -83,7 +120,9 @@ function createRippleNormalMap(size = 512) {
   return tex;
 }
 
-const RIPPLE_TILE = 9; // metres per ripple texture tile
+const JUNGLE = LEVEL.id === 'rainforest';
+const buildChunkProps = JUNGLE ? buildJungleProps : buildDesertProps;
+const RIPPLE_TILE = JUNGLE ? 6 : 9; // metres per ground texture tile
 
 export class Terrain {
   constructor(scene, renderer) {
@@ -93,10 +132,10 @@ export class Terrain {
     this.material = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       vertexColors: true,
-      roughness: 0.93,
+      roughness: LEVEL.ground.roughness,
       metalness: 0,
-      normalMap: createRippleNormalMap(),
-      normalScale: new THREE.Vector2(0.28, 0.28),
+      normalMap: JUNGLE ? createNormalMap(litterHeight, 6) : createNormalMap(rippleHeight, 2.2),
+      normalScale: new THREE.Vector2(LEVEL.ground.normalScale, LEVEL.ground.normalScale),
     });
     this.material.normalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
     this.lastCenter = null;
@@ -116,9 +155,7 @@ export class Terrain {
     const colors = new Float32Array(n * n * 3);
     const uvs = new Float32Array(n * n * 2);
     const nrm = new THREE.Vector3();
-    const base = new THREE.Color().setRGB(0.87, 0.72, 0.5, THREE.SRGBColorSpace);
-    const crest = new THREE.Color().setRGB(0.93, 0.81, 0.62, THREE.SRGBColorSpace);
-    const shade = new THREE.Color().setRGB(0.78, 0.6, 0.4, THREE.SRGBColorSpace);
+    const { base, crest, shade } = LEVEL.ground;
     const c = new THREE.Color();
 
     for (let j = 0; j < n; j++) {
@@ -185,6 +222,8 @@ export class Terrain {
     this.scene.remove(chunk.mesh);
     chunk.mesh.geometry.dispose();
     this.scene.remove(chunk.props.group);
+    // Instanced props own their per-instance buffers.
+    chunk.props.group.traverse((o) => { if (o.isInstancedMesh) o.dispose(); });
     this.scene.remove(chunk.coins.group);
   }
 

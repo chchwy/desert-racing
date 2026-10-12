@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LEVEL } from './levels.js';
 
 // ---------------------------------------------------------------- dust ----
 
@@ -53,8 +54,8 @@ export class Dust {
       uniforms: {
         uMap: { value: puffTexture() },
         uScale: { value: 500 },
-        uColor: { value: new THREE.Color().setRGB(0.95, 0.87, 0.74, THREE.SRGBColorSpace) },
-        uShade: { value: new THREE.Color().setRGB(0.8, 0.69, 0.55, THREE.SRGBColorSpace) },
+        uColor: { value: LEVEL.dust.color.clone() },
+        uShade: { value: LEVEL.dust.shade.clone() },
       },
       vertexShader: /* glsl */ `
         attribute float aSize;

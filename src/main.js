@@ -12,6 +12,7 @@ import { Bike } from './bike.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
 import { ChaseCamera } from './camera.js';
+import { LEVEL, LEVELS, LEVEL_ORDER, switchLevel } from './levels.js';
 
 // ------------------------------------------------------------- renderer ----
 const canvas = document.getElementById('game');
@@ -24,14 +25,14 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(HAZE_COLOR, 240, 6400);
+scene.fog = new THREE.Fog(HAZE_COLOR, LEVEL.fogNear, LEVEL.fogFar);
 
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.4, 8000);
 
 // ----------------------------------------------------------------- light ----
-const hemi = new THREE.HemisphereLight(0xbcd6f0, 0xd9b98a, 0.6);
+const hemi = new THREE.HemisphereLight(LEVEL.hemi.sky, LEVEL.hemi.ground, LEVEL.hemi.intensity);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff1dc, 2.8);
+const sun = new THREE.DirectionalLight(LEVEL.sun.color, LEVEL.sun.intensity);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = sun.shadow.camera.bottom = -30;
@@ -99,6 +100,27 @@ addEventListener('resize', resize);
 resize();
 
 // ------------------------------------------------------------------- HUD ----
+document.title = LEVEL.title;
+document.body.style.background = LEVEL.page;
+document.getElementById('eyebrow').textContent = LEVEL.eyebrow;
+document.getElementById('headline').textContent = LEVEL.headline;
+document.getElementById('sub').textContent = LEVEL.sub;
+
+// Level picker: buttons, or keys 1 / 2. Picking reloads the page on that level.
+const picker = document.getElementById('levels');
+LEVEL_ORDER.forEach((id, i) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = `${i + 1} ${LEVELS[id].name}`;
+  if (id === LEVEL.id) btn.classList.add('active');
+  btn.addEventListener('click', () => switchLevel(id));
+  picker.appendChild(btn);
+});
+addEventListener('keydown', (e) => {
+  const i = ['Digit1', 'Digit2'].indexOf(e.code);
+  if (i >= 0) switchLevel(LEVEL_ORDER[i]);
+});
+
 const hud = {
   speed: document.getElementById('speed'),
   gap: document.getElementById('gap'),

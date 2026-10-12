@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { LEVEL } from './levels.js';
 
 export const SUN_DIR = new THREE.Vector3(-0.5, 0.5, 0.7).normalize();
-export const HAZE_COLOR = new THREE.Color(0xdcd3c2);
+export const HAZE_COLOR = new THREE.Color(LEVEL.haze);
 
 const vertexShader = /* glsl */ `
   varying vec3 vDir;
@@ -18,6 +19,8 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uMid;
   uniform vec3 uHaze;
   uniform float uTime;
+  uniform float uCover; // extra cloud cover, 0 = clear desert sky
+  uniform float uSun;   // sun disc and glow strength
   varying vec3 vDir;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -43,15 +46,15 @@ const fragmentShader = /* glsl */ `
 
     // sun
     float sd = max(dot(d, uSunDir), 0.0);
-    col += vec3(1.0, 0.92, 0.8) * pow(sd, 600.0) * 30.0;
-    col += vec3(1.0, 0.9, 0.75) * pow(sd, 12.0) * 0.35;
+    col += vec3(1.0, 0.92, 0.8) * pow(sd, 600.0) * 30.0 * uSun;
+    col += vec3(1.0, 0.9, 0.75) * pow(sd, 12.0) * 0.35 * uSun;
 
     // clouds on a flat layer
     if (y > 0.0) {
       vec2 uv = d.xz / (y + 0.08) * 1.4 + vec2(uTime * 0.012, uTime * 0.004);
       float n = fbm(uv);
       float n2 = fbm(uv * 2.7 + 5.0);
-      float cover = smoothstep(0.48, 0.78, n * 0.8 + n2 * 0.3);
+      float cover = smoothstep(0.48 - uCover, 0.78 - uCover * 0.5, n * 0.8 + n2 * 0.3);
       float shade = smoothstep(0.4, 0.9, fbm(uv + uSunDir.xz * 0.08));
       vec3 cloudCol = mix(vec3(1.05, 1.05, 1.08), vec3(0.72, 0.78, 0.88), shade * 0.7);
       cloudCol += vec3(1.0, 0.95, 0.85) * pow(sd, 6.0) * 0.6;
@@ -72,10 +75,12 @@ export function createSky() {
     fragmentShader,
     uniforms: {
       uSunDir: { value: SUN_DIR },
-      uZenith: { value: new THREE.Color(0x2f78c8) },
-      uMid: { value: new THREE.Color(0x86b6e0) },
+      uZenith: { value: new THREE.Color(LEVEL.sky.zenith) },
+      uMid: { value: new THREE.Color(LEVEL.sky.mid) },
       uHaze: { value: HAZE_COLOR },
       uTime: { value: 0 },
+      uCover: { value: LEVEL.sky.cover },
+      uSun: { value: LEVEL.sky.sun },
     },
     side: THREE.BackSide,
     depthWrite: false,
