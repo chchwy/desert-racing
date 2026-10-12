@@ -1,6 +1,6 @@
 # Desert Rider
 
-Endless hover-bike prototype (three.js r186, Vite 8) with two levels: desert and rainforest. Procedural terrain, one generated cat rider, and streamed props. There is no test runner. `README.md` is stale: it still says the rider is primitives and that there are no external models. Trust the code.
+Endless hover-bike prototype (three.js r186, Vite 8) with three levels: desert, rainforest and grassland. Procedural terrain, one generated cat rider, and streamed props. There is no test runner. `README.md` is stale: it still says the rider is primitives and that there are no external models. Trust the code.
 
 The page copy is zh-Hant. Keep new player-facing strings in Traditional Chinese. The HUD counters (擊破 / 捕獲 / 夥伴) are static markup and are not wired to anything.
 
@@ -21,7 +21,7 @@ Vite's default is http://localhost:5173. Port 5173 is often another project on t
 
 URL flags, read in `src/main.js`:
 
-- `?level=rainforest` loads the jungle. No flag is the desert.
+- `?level=rainforest` loads the jungle, `?level=grassland` the prairie. No flag is the desert.
 - `?demo` holds W and weaves with A/D. Useless for checking a fixed heading.
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
@@ -54,11 +54,13 @@ Bike space is **+Z forward, +Y up, +X to the rider's left**. This is not three.j
 
 ## Levels
 
-`LEVEL` is fixed for the page load. `heightAt`, the chunk props, the sky, the fog and the dust tint all read it at import time, so the picker (HUD buttons, keys 1 / 2) reloads the page with `?level=` instead of swapping the world in place. Keep the other URL flags when switching (`switchLevel` does).
+`LEVEL` is fixed for the page load. `heightAt`, the chunk props, the sky, the fog and the dust tint all read it at import time, so the picker (HUD buttons, keys 1 / 2 / 3) reloads the page with `?level=` instead of swapping the world in place. Keep the other URL flags when switching (`switchLevel` does).
 
 The rainforest uses `jungleHeight` and `buildJungleProps`; the desert code paths are unchanged. Trees, palms, ferns and boulders are one `InstancedMesh` per kind per chunk, and `disposeChunk` disposes them. Trunks, palms, boulders and the temple shrine have colliders. Ferns and canopy do not. Jungle placement seeds from `hashSeed(cx + 3000, cz - 3000)`, separate from the desert seed.
 
 The jungle landmark at `(149, 118)` is a stepped temple on the pyramid slope record. `flatY` caps `pyramidFace` at the shrine terrace. Each terrace's outer edge sits half a step above the taper, and the stairway on the face toward the origin lies on it. The fog is much shorter than the desert's (far 1500).
+
+The grassland uses `plainsHeight` and `buildGrasslandProps` (acacias, granite outcrops, a giant acacia at the landmark spot). Its tall grass is `src/grass.js`, not chunk props: 20 m tiles of pooled `InstancedMesh` tufts within 100 m of the bike, thinned by `count` toward the rim (tufts are written in random order, so a lower count thins evenly). The grass shader replaces `project_vertex` and bends in world space after instancing: wind gusts, the bike parting the grass, blades lying down near the camera, and the rim shrinking to the ground. Grass has no colliders and casts no shadow. The grassland ground colors are matched to the far grass so the patch rim does not show.
 
 ## Map
 
@@ -74,6 +76,8 @@ The jungle landmark at `(149, 118)` is a stepped temple on the pyramid slope rec
 | `src/terrain.js` | `heightAt`, chunk streaming, prop hookup |
 | `src/props.js` | Ruins, pillars, rocks, sphinx, pyramids, colliders |
 | `src/jungle.js` | Rainforest trees, palms, ferns, boulders, stepped temple |
+| `src/grassland.js` | Prairie acacias, outcrops, giant landmark tree |
+| `src/grass.js` | Streamed tall grass with wind and bike parting |
 | `src/noise.js` | `fbm`, `mulberry32`, `hashSeed` |
 | `src/sky.js` | Sky dome. `SUN_DIR`, `HAZE_COLOR` |
 | `src/effects.js` | Dust, ribbons, speed lines |

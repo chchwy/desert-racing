@@ -8,9 +8,9 @@ import {
 // Rainforest props. Trees, ferns and boulders are InstancedMesh per chunk, so a chunk
 // of forest is a handful of draw calls. Trunks and boulders get colliders; ferns do not.
 
-const trunkGeo = new THREE.CylinderGeometry(0.62, 1, 1, 8, 1);
+export const trunkGeo = new THREE.CylinderGeometry(0.62, 1, 1, 8, 1);
 trunkGeo.translate(0, 0.5, 0); // base at the origin
-const canopyGeo = new THREE.IcosahedronGeometry(1, 1);
+export const canopyGeo = new THREE.IcosahedronGeometry(1, 1);
 // A palm frond: a flat blade from the crown outward along +z.
 const frondGeo = new THREE.ConeGeometry(1, 1, 4, 1);
 frondGeo.rotateX(Math.PI / 2);
@@ -31,7 +31,7 @@ const FERN_TONES = [srgb(0.26, 0.46, 0.15), srgb(0.34, 0.52, 0.18), srgb(0.2, 0.
 const SPAWN_CLEAR = 60;
 
 // Collects transforms, then becomes one InstancedMesh.
-class Batch {
+export class Batch {
   constructor(geo, mat, { shadow = true, colors = false } = {}) {
     this.geo = geo;
     this.mat = mat;

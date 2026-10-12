@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// One level per page load. `?level=rainforest` picks the jungle; anything else is the desert.
+// One level per page load. `?level=rainforest` or `?level=grassland`; anything else is the desert.
 // Switching reloads the page: heightAt, the props and the sky all read LEVEL at import time.
 
 const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -52,9 +52,33 @@ export const LEVELS = {
     },
     dust: { color: srgb(0.66, 0.6, 0.45), shade: srgb(0.42, 0.38, 0.28) },
   },
+  grassland: {
+    id: 'grassland',
+    name: '大草原',
+    title: 'Prairie Rider — prototype',
+    eyebrow: 'PRAIRIE RIDER / BATTLE PROTOTYPE',
+    headline: '在草海，狩獵。',
+    sub: '懸浮機車原型 · 長草＋風 · 地形 endless',
+    page: '#d3d8bd',
+    haze: 0xd3d8bd,
+    fogNear: 140,
+    fogFar: 3600,
+    sky: { zenith: 0x3a7fc4, mid: 0x9cc4e2, cover: 0.08, sun: 1 },
+    hemi: { sky: 0xc8e0f0, ground: 0x6b7a3a, intensity: 0.7 },
+    sun: { color: 0xfff0d6, intensity: 2.6 },
+    ground: {
+      // Close to the grass patch seen from afar, so its rim melts into the ground.
+      base: srgb(0.23, 0.31, 0.1),
+      crest: srgb(0.3, 0.36, 0.12),
+      shade: srgb(0.2, 0.25, 0.09),
+      roughness: 0.96,
+      normalScale: 0.45,
+    },
+    dust: { color: srgb(0.9, 0.86, 0.66), shade: srgb(0.72, 0.68, 0.48) },
+  },
 };
 
-export const LEVEL_ORDER = ['desert', 'rainforest'];
+export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland'];
 
 function pickLevel() {
   if (typeof location === 'undefined') return LEVELS.desert;

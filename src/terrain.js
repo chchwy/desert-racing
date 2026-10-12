@@ -3,6 +3,7 @@ import { fbm, valueNoise } from './noise.js';
 import { LEVEL } from './levels.js';
 import { buildChunkProps as buildDesertProps, pyramidFace } from './props.js';
 import { buildJungleProps } from './jungle.js';
+import { buildGrasslandProps } from './grassland.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -39,8 +40,16 @@ function jungleHeight(x, z) {
   return hills + swell + lumps;
 }
 
+// Prairie. Long low swells with a gentle roll on top, easy to ride flat out.
+function plainsHeight(x, z) {
+  const swell = fbm(x * 0.0011 + 9.1, z * 0.0011 + 2.7, 3) * 40;
+  const roll = fbm(x * 0.005 + 1.3, z * 0.005 + 6.1, 3) * 9;
+  const lumps = (fbm(x * 0.04, z * 0.04, 2) - 0.5) * 0.6;
+  return swell + roll + lumps;
+}
+
 // The level is fixed for the page, so every importer gets the same field.
-export const heightAt = LEVEL.id === 'rainforest' ? jungleHeight : duneHeight;
+export const heightAt = { desert: duneHeight, rainforest: jungleHeight, grassland: plainsHeight }[LEVEL.id];
 
 export function normalAt(x, z, target = new THREE.Vector3(), eps = 1.0) {
   const hx = heightAt(x + eps, z) - heightAt(x - eps, z);
@@ -120,9 +129,9 @@ function createNormalMap(heightFn, strength, size = 512) {
   return tex;
 }
 
-const JUNGLE = LEVEL.id === 'rainforest';
-const buildChunkProps = JUNGLE ? buildJungleProps : buildDesertProps;
-const RIPPLE_TILE = JUNGLE ? 6 : 9; // metres per ground texture tile
+const DESERT = LEVEL.id === 'desert';
+const buildChunkProps = { desert: buildDesertProps, rainforest: buildJungleProps, grassland: buildGrasslandProps }[LEVEL.id];
+const RIPPLE_TILE = DESERT ? 9 : 6; // metres per ground texture tile
 
 export class Terrain {
   constructor(scene, renderer) {
@@ -134,7 +143,7 @@ export class Terrain {
       vertexColors: true,
       roughness: LEVEL.ground.roughness,
       metalness: 0,
-      normalMap: JUNGLE ? createNormalMap(litterHeight, 6) : createNormalMap(rippleHeight, 2.2),
+      normalMap: DESERT ? createNormalMap(rippleHeight, 2.2) : createNormalMap(litterHeight, 6),
       normalScale: new THREE.Vector2(LEVEL.ground.normalScale, LEVEL.ground.normalScale),
     });
     this.material.normalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
