@@ -15,6 +15,8 @@ import { ChaseCamera } from './camera.js';
 import { LEVEL, LEVELS, LEVEL_ORDER, switchLevel } from './levels.js';
 import { Grass } from './grass.js';
 import { Snowfall } from './snowfall.js';
+import { Shatter } from './shatter.js';
+import { ice } from './snow.js';
 
 // ------------------------------------------------------------- renderer ----
 const canvas = document.getElementById('game');
@@ -64,6 +66,7 @@ grass?.update(player.pos, player.pos, 0, true);
 const backdrop = LEVEL.backdrop ? new Backdrop(scene) : null;
 backdrop?.update(player.pos, true);
 const snowfall = LEVEL.snowfall ? new Snowfall(scene) : null;
+const shatter = LEVEL.id === 'snow' ? new Shatter(scene, ice) : null;
 
 const dust = new Dust(scene);
 const trails = [new Ribbon(scene), new Ribbon(scene)];
@@ -185,6 +188,27 @@ function emitDust(dt) {
   }
 }
 
+// A cloud of snow and ice dust where a crystal broke.
+const smashAhead = new THREE.Vector3();
+function frostBurst(spire) {
+  const n = Math.round(THREE.MathUtils.clamp(spire.h * 1.5, 16, 50));
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.random() * spire.w * 1.5;
+    const sp = 2 + Math.random() * 7;
+    dust.emit(
+      spire.x + Math.cos(a) * r,
+      spire.baseY + 1 + Math.random() * spire.h * 0.8,
+      spire.z + Math.sin(a) * r,
+      Math.cos(a) * sp + player.vel.x * 0.25,
+      1 + Math.random() * 4,
+      Math.sin(a) * sp + player.vel.z * 0.25,
+      1.5 + Math.random() * 2,
+      1.2 + Math.random() * 1.4,
+    );
+  }
+}
+
 function frame(timestamp) {
   timer.update(timestamp);
   const dt = Math.min(timer.getDelta(), 1 / 20);
@@ -196,6 +220,14 @@ function frame(timestamp) {
   if (input.hit('KeyR')) player.reset();
 
   prevPos.copy(player.pos);
+  // Ice crystals in the bike's path this frame shatter instead of stopping it.
+  smashAhead.copy(player.pos).addScaledVector(player.vel, dt);
+  for (const spire of terrain.smash(player.pos, smashAhead)) {
+    shatter?.burst(spire, player.vel);
+    frostBurst(spire);
+    player.vel.multiplyScalar(0.88);
+    player.landImpact = Math.max(player.landImpact, 0.8);
+  }
   // two physics substeps for stable hovering at high speed
   const colliders = terrain.collidersNear(player.pos.x, player.pos.z);
   for (let i = 0; i < 2; i++) {
@@ -226,6 +258,7 @@ function frame(timestamp) {
   trails.forEach((t, i) => t.update(tips[i], camera.position, 0.25 + player.throttle * 0.5 + player.boost * 0.6));
   emitDust(dt);
   dust.update(dt, heightAt);
+  shatter?.update(dt);
   speedLines.update(dt, player.pos, player.yaw, player.speed);
 
   grass?.update(player.pos, camera.position, time);

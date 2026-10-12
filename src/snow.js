@@ -16,7 +16,7 @@ const bark = new THREE.MeshStandardMaterial({ color: srgb(0.3, 0.24, 0.2), rough
 const needles = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
 const snowCap = new THREE.MeshStandardMaterial({ color: srgb(0.93, 0.95, 1.0), roughness: 0.75, flatShading: true });
 const rock = new THREE.MeshStandardMaterial({ color: srgb(0.42, 0.42, 0.46), roughness: 1, flatShading: true });
-const ice = new THREE.MeshStandardMaterial({
+export const ice = new THREE.MeshStandardMaterial({
   color: srgb(0.62, 0.84, 1.0),
   emissive: srgb(0.25, 0.6, 1.0),
   emissiveIntensity: 0.55,
@@ -70,8 +70,11 @@ function boulder(b, colliders, rng, x, z, heightAt) {
 }
 
 // Ice crystals: tall octahedra leaning out from a common root. The bloom pass picks up
-// their glow. Each spire gets a collider at its base, plus one fat one for the cluster.
-function crystalCluster(group, colliders, rng, x, z, heightAt, scale) {
+// their glow. Each spire is breakable: its collider carries the spire record, and
+// Terrain.smash hides the instance and drops the collider when the bike runs into it.
+// The fat core collider (it keeps a fast bike from clipping the cluster) belongs to
+// the main spire.
+function crystalCluster(group, colliders, breakables, rng, x, z, heightAt, scale) {
   const gy = groundMin(heightAt, x, z, 10 * scale) - 1;
   const n = 7 + Math.floor(rng() * 4);
   const m = new THREE.InstancedMesh(crystalGeo, ice, n);
@@ -88,19 +91,28 @@ function crystalCluster(group, colliders, rng, x, z, heightAt, scale) {
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(tilt, Math.PI / 2 - a, 0, 'YXZ'));
     mat.compose(new THREE.Vector3(px, gy + h * 0.45, pz), q, new THREE.Vector3(w, h * 0.55, w));
     m.setMatrixAt(i, mat);
-    colliders.push({ x: px, z: pz, r: w + 0.6, top: gy + h * 0.9 });
+    const spire = { id: breakables.length, mesh: m, index: i, x: px, z: pz, baseY: gy, h, w, colliders: [] };
+    const c = { x: px, z: pz, r: w + 0.6, top: gy + h * 0.9, breakable: spire };
+    spire.colliders.push(c);
+    colliders.push(c);
+    breakables.push(spire);
+    if (main) {
+      const core = { x, z, r: 4.5 * scale, top: gy + 24 * scale, breakable: spire };
+      spire.colliders.push(core);
+      colliders.push(core);
+    }
   }
   m.castShadow = true;
   m.receiveShadow = true;
   m.computeBoundingSphere();
   group.add(m);
-  colliders.push({ x, z, r: 4.5 * scale, top: gy + 24 * scale });
 }
 
 export function buildSnowProps(cx, cz, size, heightAt) {
   const group = new THREE.Group();
   const colliders = [];
   const slopes = [];
+  const breakables = [];
   const rng = mulberry32(hashSeed(cx + 9000, cz - 9000));
   const b = {
     trunk: new Batch(trunkGeo, bark),
@@ -113,11 +125,11 @@ export function buildSnowProps(cx, cz, size, heightAt) {
   const z0 = cz * size;
 
   if (cx === 0 && cz === 0) {
-    crystalCluster(group, colliders, mulberry32(hashSeed(5, 77)), LANDMARK_X, LANDMARK_Z, heightAt, 1.3);
+    crystalCluster(group, colliders, breakables, mulberry32(hashSeed(5, 77)), LANDMARK_X, LANDMARK_Z, heightAt, 1.3);
   } else if (rng() < 0.05) {
     const x = x0 + 40 + rng() * (size - 80);
     const z = z0 + 40 + rng() * (size - 80);
-    if (Math.hypot(x, z) > 280) crystalCluster(group, colliders, rng, x, z, heightAt, 0.6 + rng() * 0.4);
+    if (Math.hypot(x, z) > 280) crystalCluster(group, colliders, breakables, rng, x, z, heightAt, 0.6 + rng() * 0.4);
   }
 
   // Pines grow in stands (a forest noise), thin out up the slope, and stop at the tree line.
@@ -145,5 +157,5 @@ export function buildSnowProps(cx, cz, size, heightAt) {
   }
 
   for (const batch of Object.values(b)) batch.build(group);
-  return { group, colliders, slopes };
+  return { group, colliders, slopes, breakables };
 }

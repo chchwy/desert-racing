@@ -64,6 +64,8 @@ The grassland uses `plainsHeight` and `buildGrasslandProps` (acacias, granite ou
 
 The snow level uses `snowHeight`: a flat valley within ~250 m of the start, ridged peaks up to ~330 m beyond it. `buildSnowProps` places pine stands below `TREE_LINE`, snow-capped boulders, and an emissive ice-crystal cluster at the landmark spot. `LEVEL.ground.steep` sets where the shade (rock) color takes over in `groundColor`; on snow it starts near 40°. Two snow-only extras hang off `LEVEL` flags: `Backdrop` (`backdrop: true`, in `terrain.js`) is a low-res ring of the same height field from 700 m to 6 km, sunk 8 m under the chunks, rebuilt every 150 m of travel a few rings per frame so it does not hitch. `Snowfall` (`snowfall: true`, `src/snowfall.js`) wraps flakes in a box around the camera in the shader. The white HUD text gets a darker halo through `body[data-level="snow"]`.
 
+Ice crystals break. A collider may carry `breakable` (the spire record from `crystalCluster`; the cluster's fat core collider belongs to the main spire). Each frame, before `collidersNear` and the physics substeps, `Terrain.smash(pos, pos + vel·dt)` finds breakable colliders on that path, hides the instance, drops its colliders, and returns the spires; `main.js` then plays `Shatter.burst` (pooled instanced shards, `src/shatter.js`) and a frost cloud through `Dust`, trims the bike's speed and shakes the camera. `Terrain.broken` remembers `chunkKey:id` so a smashed spire stays gone when its chunk streams back in. Only snow props return `breakables`.
+
 ## Map
 
 | File | Role |
@@ -82,6 +84,7 @@ The snow level uses `snowHeight`: a flat valley within ~250 m of the start, ridg
 | `src/grass.js` | Streamed tall grass with wind and bike parting |
 | `src/snow.js` | Snowy pines, capped boulders, ice crystals |
 | `src/snowfall.js` | Falling snow around the camera |
+| `src/shatter.js` | Ice shards when a crystal is smashed |
 | `src/noise.js` | `fbm`, `mulberry32`, `hashSeed` |
 | `src/sky.js` | Sky dome. `SUN_DIR`, `HAZE_COLOR` |
 | `src/effects.js` | Dust, ribbons, speed lines |

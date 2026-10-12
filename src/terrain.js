@@ -145,6 +145,16 @@ function createNormalMap(heightFn, strength, size = 512) {
   return tex;
 }
 
+// Hide a breakable instance and drop its colliders from the chunk.
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+function breakProp(props, b) {
+  if (b.broken) return;
+  b.broken = true;
+  b.mesh.setMatrixAt(b.index, ZERO);
+  b.mesh.instanceMatrix.needsUpdate = true;
+  props.colliders = props.colliders.filter((c) => !b.colliders.includes(c));
+}
+
 // Steeper slopes take the shade color, flats and crests the light one.
 function groundColor(x, z, nrm, c) {
   const { base, crest, shade, steep = [3, 0.2, 0.7] } = LEVEL.ground;
@@ -179,6 +189,9 @@ export class Terrain {
     });
     this.material.normalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
     this.lastCenter = null;
+    // Breakable props that have been smashed, as `chunkKey:id`, so they stay gone
+    // when their chunk streams out and back in.
+    this.broken = new Set();
   }
 
   key(cx, cz) {
@@ -246,6 +259,11 @@ export class Terrain {
     this.scene.add(mesh);
 
     const props = buildChunkProps(cx, cz, CHUNK_SIZE, heightAt);
+    props.breakables ??= [];
+    const key = this.key(cx, cz);
+    for (const b of props.breakables) {
+      if (this.broken.has(key + ':' + b.id)) breakProp(props, b);
+    }
     this.scene.add(props.group);
     const coins = buildChunkCoins(cx, cz, CHUNK_SIZE, heightAt, props.colliders);
     this.scene.add(coins.group);
@@ -340,6 +358,40 @@ export class Terrain {
       }
     }
     return y;
+  }
+
+  // Breakable props whose collider the bike's path from prev to next runs into, in the
+  // 3x3 chunks around next. Each one is hidden, loses its colliders, and is returned
+  // so the caller can play the break. Call it before the collision push.
+  smash(prev, next) {
+    const hits = [];
+    const cx = Math.floor(next.x / CHUNK_SIZE);
+    const cz = Math.floor(next.z / CHUNK_SIZE);
+    const sx = next.x - prev.x;
+    const sz = next.z - prev.z;
+    const len2 = sx * sx + sz * sz;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const key = this.key(cx + dx, cz + dz);
+        const chunk = this.chunks.get(key);
+        if (!chunk || !chunk.props.breakables.length) continue;
+        for (const c of chunk.props.colliders) {
+          const b = c.breakable;
+          if (!b || next.y > c.top + 0.5) continue;
+          // Closest point on the path to the collider axis.
+          const t = len2 > 1e-9 ? THREE.MathUtils.clamp(((c.x - prev.x) * sx + (c.z - prev.z) * sz) / len2, 0, 1) : 0;
+          const px = prev.x + sx * t - c.x;
+          const pz = prev.z + sz * t - c.z;
+          const reach = c.r + 1.6; // the bike's 1.3 m padding, and a little more
+          if (px * px + pz * pz > reach * reach) continue;
+          if (hits.includes(b)) continue;
+          hits.push(b);
+          this.broken.add(key + ':' + b.id);
+        }
+        for (const b of hits) if (chunk.props.breakables.includes(b)) breakProp(chunk.props, b);
+      }
+    }
+    return hits;
   }
 
   // Colliders from props in the 3x3 chunks around a point.
