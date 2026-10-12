@@ -145,7 +145,7 @@ export const LEVELS = {
     page: '#14485c',
     haze: 0x1a5870,
     fogNear: 6,
-    fogFar: 340, // water swallows the view fast
+    fogFar: 420, // water swallows the view, but trench walls and seamounts still loom
     caustics: true,
     weather: [
       // Bubbles rising, then marine snow drifting down.
@@ -160,6 +160,8 @@ export const LEVELS = {
       base: srgb(0.58, 0.6, 0.52),
       crest: srgb(0.7, 0.71, 0.6),
       shade: srgb(0.3, 0.36, 0.36), // reef rock
+      steep: [3.6, 0.5, 0.75], // bare rock on trench walls and seamount flanks
+      deep: { color: srgb(0.06, 0.18, 0.26), from: 5, span: 80, most: 0.85 }, // darker with depth
       ripple: true,
       roughness: 0.9,
       normalScale: 0.35,

@@ -4,7 +4,8 @@ import { rockGeo, groundMin, yawOffset, LANDMARK_X, LANDMARK_Z, LANDMARK_CLEAR }
 import { Batch, trunkGeo, canopyGeo } from './jungle.js';
 
 // Seabed props: kelp forests that sway in the swell, coral gardens (brain, branching,
-// fan, tube sponges), reef rocks, and a shipwreck ahead of the start.
+// fan, tube sponges), reef rocks, and a shipwreck ahead of the start. Trench walls stay
+// bare, and down in the dark the trenches grow glowing anemones and tube worms instead.
 
 const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
 
@@ -62,6 +63,14 @@ const reefRock = new THREE.MeshStandardMaterial({ color: srgb(0.33, 0.4, 0.38), 
 const wood = new THREE.MeshStandardMaterial({ color: srgb(0.28, 0.24, 0.2), roughness: 0.95, flatShading: true });
 const algae = new THREE.MeshStandardMaterial({ color: srgb(0.24, 0.34, 0.24), roughness: 1, flatShading: true });
 
+// Unlit, with instance colors past 1 so the bloom pass makes them glow in the dark.
+const glow = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const GLOW_TONES = [
+  new THREE.Color(0.2, 1.6, 2.4), new THREE.Color(1.8, 0.4, 2.2), new THREE.Color(0.6, 0.8, 2.6), new THREE.Color(0.3, 2.2, 1.4),
+];
+const DEEP = -35; // metres: below this the trench props take over
+const STEEP = 0.7; // rise over run: steeper ground stays bare
+
 const KELP_TONES = [srgb(0.5, 0.58, 0.2), srgb(0.6, 0.55, 0.2), srgb(0.44, 0.54, 0.22)];
 const CORAL_TONES = [
   srgb(0.95, 0.42, 0.45), srgb(1.0, 0.62, 0.3), srgb(0.95, 0.85, 0.35),
@@ -114,6 +123,37 @@ function tubes(b, rng, x, z, heightAt) {
     const pz = z + (rng() - 0.5) * 1.2;
     const r = 0.15 + rng() * 0.15;
     b.tube.add(px, gy, pz, r, 0.6 + rng() * 1.6, r, 0, (rng() - 0.5) * 0.3, (rng() - 0.5) * 0.3, tone);
+  }
+}
+
+// A cluster of glowing bulbs on short stalks.
+function anemone(b, rng, x, z, heightAt) {
+  const gy = heightAt(x, z) - 0.05;
+  const tone = pick(rng, GLOW_TONES);
+  const n = 4 + Math.floor(rng() * 6);
+  for (let i = 0; i < n; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = rng() * 0.9;
+    const h = 0.3 + rng() * 0.9;
+    const px = x + Math.cos(a) * d;
+    const pz = z + Math.sin(a) * d;
+    b.stalk.add(px, gy, pz, 0.05, h, 0.05, a, (rng() - 0.5) * 0.4, 0, srgb(0.5, 0.55, 0.6));
+    const r = 0.12 + rng() * 0.22;
+    b.bulb.add(px, gy + h, pz, r, r, r, 0, 0, 0, tone);
+  }
+}
+
+// Pale tube worms with glowing red plumes.
+function tubeWorms(b, rng, x, z, heightAt) {
+  const gy = heightAt(x, z) - 0.1;
+  const n = 5 + Math.floor(rng() * 8);
+  for (let i = 0; i < n; i++) {
+    const px = x + (rng() - 0.5) * 1.6;
+    const pz = z + (rng() - 0.5) * 1.6;
+    const h = 0.8 + rng() * 2.2;
+    const r = 0.06 + rng() * 0.06;
+    b.tube.add(px, gy, pz, r, h, r, 0, (rng() - 0.5) * 0.25, (rng() - 0.5) * 0.25, srgb(0.85, 0.82, 0.75));
+    b.bulb.add(px, gy + h, pz, r * 2.2, r * 1.6, r * 2.2, 0, 0, 0, new THREE.Color(2.4, 0.35, 0.3));
   }
 }
 
@@ -186,6 +226,8 @@ export function buildReefProps(cx, cz, size, heightAt) {
     fan: new Batch(canopyGeo, coral, { colors: true }),
     tube: new Batch(tubeGeo, sponge, { colors: true }),
     rock: new Batch(rockGeo, reefRock),
+    stalk: new Batch(trunkGeo, sponge, { colors: true, shadow: false }),
+    bulb: new Batch(canopyGeo, glow, { colors: true, shadow: false }),
   };
   const x0 = cx * size;
   const z0 = cz * size;
@@ -193,9 +235,19 @@ export function buildReefProps(cx, cz, size, heightAt) {
   if (cx === 0 && cz === 0) shipwreck(group, colliders, mulberry32(hashSeed(17, 29)), LANDMARK_X, LANDMARK_Z, heightAt);
 
   // Kelp in forests, corals in gardens: two noise fields decide where each grows.
+  // Steep walls stay bare; the trench floor gets the glowing deep-sea life.
   for (let i = 0; i < 420; i++) {
     const x = x0 + rng() * size;
     const z = z0 + rng() * size;
+    const y = heightAt(x, z);
+    const slope = Math.hypot(heightAt(x + 2, z) - heightAt(x - 2, z), heightAt(x, z + 2) - heightAt(x, z - 2)) / 4;
+    if (slope > STEEP) continue;
+    if (y < DEEP) {
+      const roll = rng();
+      if (roll < 0.22) anemone(b, rng, x, z, heightAt);
+      else if (roll < 0.34) tubeWorms(b, rng, x, z, heightAt);
+      continue;
+    }
     const forest = fbm(x * 0.008 + 2.5, z * 0.008 + 9.1, 2);
     const garden = fbm(x * 0.012 + 7.3, z * 0.012 + 4.4, 2);
     const roll = rng();

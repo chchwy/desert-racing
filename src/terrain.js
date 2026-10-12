@@ -87,13 +87,37 @@ function volcanoHeight(x, z) {
   return plain + cone + lumps - lavaAt(x, z) * 4;
 }
 
-// Seabed. Rippled sand in broad swells, with reef ridges and the odd deep trough.
+// Seabed. Broad slopes and swells stepped into reef terraces, seamount ridges in some
+// regions, and long winding trenches about 100 m deep with steep walls and a flat floor.
+// The start and the shipwreck sit on calm sand, and no trench crosses them.
+const TRENCH_DEPTH = 100;
+
+function terrace(h, step) {
+  const k = h / step;
+  const f = k - Math.floor(k);
+  return (Math.floor(k) + smooth(smooth(f))) * step;
+}
+
 function seabedHeight(x, z) {
-  const swell = fbm(x * 0.0016 + 8.1, z * 0.0016 + 2.2, 3) * 34;
-  const reef = 1 - Math.abs(fbm(x * 0.007 + 1.9, z * 0.007 + 6.4, 3) * 2 - 1);
-  const ridges = reef ** 4 * 14 * smooth(THREE.MathUtils.clamp((Math.hypot(x, z) - 60) / 80, 0, 1));
+  const calm = smooth(THREE.MathUtils.clamp((Math.hypot(x, z) - 50) / 100, 0, 1))
+    * smooth(THREE.MathUtils.clamp((Math.hypot(x - 149, z - 118) - 70) / 120, 0, 1));
+  const shelf = (fbm(x * 0.0007 + 8.1, z * 0.0007 + 2.2, 3) - 0.5) * 110;
+  const swell = fbm(x * 0.003 + 4.4, z * 0.003 + 0.6, 3) * 16;
+  const region = smooth(THREE.MathUtils.clamp((fbm(x * 0.0006 + 3.3, z * 0.0006 + 7.1, 2) - 0.45) / 0.2, 0, 1));
+  const ridge = 1 - Math.abs(fbm(x * 0.0028 + 1.9, z * 0.0028 + 6.4, 3) * 2 - 1);
+  const seamount = ridge ** 3 * 60 * region;
+  let h = shelf + swell + seamount * calm;
+  h += (terrace(h, 7) - h) * 0.55 * calm;
+
+  // Trenches follow the zero line of a warped noise field.
+  const wx = x + (fbm(x * 0.0012 + 5.5, z * 0.0012, 3) - 0.5) * 400;
+  const wz = z + (fbm(x * 0.0012, z * 0.0012 + 2.8, 3) - 0.5) * 400;
+  const c = Math.abs(fbm(wx * 0.0011 + 9.9, wz * 0.0011 + 3.7, 3) - 0.5);
+  const cut = smooth(THREE.MathUtils.clamp((0.085 - c) / 0.06, 0, 1));
+  h -= cut * TRENCH_DEPTH * calm;
+
   const sand = (fbm(x * 0.02, z * 0.02, 2) - 0.5) * 1.6;
-  return swell + ridges + sand;
+  return h + sand * (1 - cut * 0.7);
 }
 
 // The level is fixed for the page, so every importer gets the same field.
@@ -116,6 +140,7 @@ const GROUND_NOISE = /* glsl */ `
 uniform float uTime;
 varying float vLava;
 varying vec2 vGroundXZ;
+varying float vGroundY;
 float groundHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float groundNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -150,7 +175,7 @@ const CAUSTICS = /* glsl */ `
   }
   c /= 4.0;
   c = 1.17 - pow(c, 1.4);
-  float web = clamp(pow(abs(c), 8.0), 0.0, 2.0);
+  float web = clamp(pow(abs(c), 8.0), 0.0, 2.0) * smoothstep(-70.0, 0.0, vGroundY); // light fades with depth
   reflectedLight.directDiffuse *= 1.0 + web * 1.4;
   reflectedLight.indirectDiffuse *= 1.0 + web * 0.35;
 }
@@ -163,9 +188,11 @@ function patchGround(material) {
     shader.vertexShader = `attribute float aLava;
 varying float vLava;
 varying vec2 vGroundXZ;
+varying float vGroundY;
 ` + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
         vLava = aLava;
-        vGroundXZ = position.xz;`);
+        vGroundXZ = position.xz;
+        vGroundY = position.y;`);
     let fs = GROUND_NOISE + shader.fragmentShader;
     if (LEVEL.lava) fs = fs.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>${LAVA_GLOW}`);
     if (LEVEL.caustics) fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>${CAUSTICS}`);
@@ -265,7 +292,7 @@ function breakProp(props, b) {
 }
 
 // Steeper slopes take the shade color, flats and crests the light one.
-function groundColor(x, z, nrm, c, lava = LAVA ? lavaAt(x, z) : 0) {
+function groundColor(x, z, nrm, c, lava = LAVA ? lavaAt(x, z) : 0, y = 0) {
   const { base, crest, shade, steep = [3, 0.2, 0.7] } = LEVEL.ground;
   const slope = 1 - nrm.y;
   const tint = fbm(x * 0.01 + 50, z * 0.01, 2);
@@ -273,6 +300,9 @@ function groundColor(x, z, nrm, c, lava = LAVA ? lavaAt(x, z) : 0) {
   const [gain, offset, most] = steep;
   c.lerp(shade, THREE.MathUtils.clamp(slope * gain - offset, 0, most));
   if (lava > 0) c.lerp(LEVEL.ground.lava, lava);
+  // Underwater, the deep floor fades toward dark blue.
+  const { deep } = LEVEL.ground;
+  if (deep) c.lerp(deep.color, THREE.MathUtils.clamp((deep.from - y) / deep.span, 0, deep.most));
   return c;
 }
 
@@ -338,7 +368,7 @@ export class Terrain {
         normals[k * 3 + 1] = nrm.y;
         normals[k * 3 + 2] = nrm.z;
         const lv = LAVA ? lavaAt(x, z) : 0;
-        groundColor(x, z, nrm, c, lv);
+        groundColor(x, z, nrm, c, lv, y);
         colors[k * 3] = c.r;
         colors[k * 3 + 1] = c.g;
         colors[k * 3 + 2] = c.b;
