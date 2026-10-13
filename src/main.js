@@ -6,7 +6,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 
 import { Terrain, Backdrop, heightAt, groundUniforms } from './terrain.js';
-import { VOLCANO } from './lava.js';
+import { VOLCANO, lavaAt } from './lava.js';
+import { Eruption } from './eruption.js';
 import { Plume } from './plume.js';
 import { FishSchools } from './fish.js';
 import { swellUniforms } from './reef.js';
@@ -94,6 +95,8 @@ if (LEVEL.id === 'volcano') {
 }
 
 const dust = new Dust(scene);
+const eruption = LEVEL.id === 'volcano' ? new Eruption(scene, dust) : null;
+const lavaVent = LEVEL.id === 'volcano' ? terrain.chunks.get('0,0')?.props.vent : null;
 const trails = [new Ribbon(scene), new Ribbon(scene)];
 const speedLines = new SpeedLines(scene);
 
@@ -135,6 +138,7 @@ function resize() {
   camera.updateProjectionMatrix();
   dust.setViewportHeight(h * renderer.getPixelRatio());
   for (const p of plumes) p.setViewportHeight(h * renderer.getPixelRatio());
+  eruption?.setViewportHeight(h * renderer.getPixelRatio());
   for (const w of weather) w.setViewportHeight(h * renderer.getPixelRatio());
 }
 addEventListener('resize', resize);
@@ -171,7 +175,17 @@ const hud = {
   fps: document.getElementById('fps'),
   coins: document.getElementById('coins'),
   coinCount: document.getElementById('coin-count'),
+  alert: document.getElementById('alert'),
+  burn: document.getElementById('burn'),
 };
+
+// A big centered line: eruption warnings and the death message.
+let alertTimer = 0;
+function showAlert(text, seconds, kind) {
+  hud.alert.textContent = text;
+  hud.alert.className = `alert show ${kind}`;
+  alertTimer = seconds;
+}
 
 // ------------------------------------------------------------------ loop ----
 const timer = new THREE.Timer();
@@ -235,6 +249,42 @@ function frostBurst(spire) {
   }
 }
 
+// Volcano: touching lava, or a lava bomb, ends the run. The bike burns up, the screen
+// flashes, and after a moment it respawns at the start.
+const DEATH_TIME = 1.6;
+const GRACE = 2.5; // seconds after a respawn before bombs count
+let deadTimer = 0;
+let grace = GRACE;
+function inLava() {
+  if (!LEVEL.lava || player.gap > 2.5) return false;
+  if (lavaAt(player.pos.x, player.pos.z) > 0.5) return true;
+  return !!lavaVent && Math.hypot(player.pos.x - lavaVent.x, player.pos.z - lavaVent.z) < lavaVent.r * 0.95;
+}
+function die(text) {
+  deadTimer = DEATH_TIME;
+  showAlert(text, DEATH_TIME, 'death');
+  hud.burn.classList.remove('flash');
+  void hud.burn.offsetWidth;
+  hud.burn.classList.add('flash');
+  bike.root.visible = false;
+  player.landImpact = 1;
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 2 + Math.random() * 8;
+    dust.emit(player.pos.x, player.pos.y, player.pos.z, Math.cos(a) * sp + player.vel.x * 0.3, 2 + Math.random() * 8, Math.sin(a) * sp + player.vel.z * 0.3, 2 + Math.random() * 2.5, 1.5 + Math.random() * 1.5);
+  }
+  player.vel.set(0, 0, 0);
+}
+function respawn() {
+  player.reset();
+  player.yaw = 0.9;
+  player.landImpact = 0;
+  bike.root.visible = true;
+  chase.initialized = false;
+  chase.heading = player.yaw;
+  grace = GRACE;
+}
+
 function frame(timestamp) {
   timer.update(timestamp);
   const dt = Math.min(timer.getDelta(), 1 / 20);
@@ -243,7 +293,13 @@ function frame(timestamp) {
   input.poll();
 
   if (input.hit('KeyC')) chase.cycle();
-  if (input.hit('KeyR')) player.reset();
+  if (input.hit('KeyR') && deadTimer <= 0) player.reset();
+  const dead = deadTimer > 0;
+  if (dead) {
+    deadTimer -= dt;
+    if (deadTimer <= 0) respawn();
+  }
+  grace = Math.max(grace - dt, 0);
 
   prevPos.copy(player.pos);
   // Ice crystals in the bike's path this frame shatter instead of stopping it.
@@ -256,10 +312,11 @@ function frame(timestamp) {
   }
   // two physics substeps for stable hovering at high speed
   const colliders = terrain.collidersNear(player.pos.x, player.pos.z);
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 2 && !dead; i++) {
     player.update(dt / 2, input, colliders, (x, z, n) => terrain.floorAt(x, z, n));
     if (i === 0) input.pressed.delete('Space');
   }
+  if (!dead && inLava()) die('墜入熔岩');
   terrain.update(player.pos);
   const gained = terrain.collectCoins(prevPos, player.pos);
   if (gained) {
@@ -291,6 +348,22 @@ function frame(timestamp) {
   backdrop?.update(player.pos);
   for (const w of weather) w.update(time, camera.position);
   for (const p of plumes) p.update(time);
+  if (eruption) {
+    const e = eruption.update(dt, time, player.pos, player.vel, camera.position, !dead && grace <= 0);
+    const d = Math.hypot(player.pos.x - VOLCANO.x, player.pos.z - VOLCANO.z);
+    if (e.erupted) {
+      if (deadTimer <= 0) showAlert('火山爆發！', 3, 'warn');
+      player.landImpact = Math.max(player.landImpact, THREE.MathUtils.clamp(1.2 - d / 3000, 0.15, 0.9));
+    }
+    // the ground keeps rumbling while the column climbs
+    if (eruption.t < 6 && !dead) player.landImpact = Math.max(player.landImpact, 0.25 * (1 - eruption.t / 6));
+    if (e.near < 60 && !dead) player.landImpact = Math.max(player.landImpact, 0.6 * (1 - e.near / 60));
+    if (e.hit && deadTimer <= 0) die('被火山彈擊中');
+  }
+  if (alertTimer > 0) {
+    alertTimer -= dt;
+    if (alertTimer <= 0) hud.alert.classList.remove('show');
+  }
   groundUniforms.uTime.value = time;
   swellUniforms.uTime.value = time;
   fish?.update(dt, time, player.pos, player.yaw);
@@ -323,5 +396,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer, input };
+window.__game = { player, terrain, chase, camera, renderer, input, eruption };
 requestAnimationFrame(frame);

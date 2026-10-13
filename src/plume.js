@@ -4,7 +4,7 @@ import * as THREE from 'three';
 // near the source. Used for the volcano crater (huge, seen from kilometres away) and
 // the lava pool (small, with embers). Puff ages are offset so the column is always full.
 
-function puffTexture() {
+export function puffTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const ctx = c.getContext('2d');
