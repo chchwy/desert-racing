@@ -486,7 +486,8 @@ export class Terrain {
     }
   }
 
-  // Sand plus the pyramid face, when the stone is higher. outN receives the support normal.
+  // Sand plus the pyramid face (or a slope record's own faceAt, like the lava pool's
+  // causeway), when the stone is higher. outN receives the support normal.
   floorAt(x, z, outN) {
     let y = heightAt(x, z);
     if (outN) normalAt(x, z, outN, 1.5);
@@ -497,7 +498,7 @@ export class Terrain {
         const chunk = this.chunks.get(this.key(cx + dx, cz + dz));
         if (!chunk) continue;
         for (const slope of chunk.props.slopes) {
-          const face = pyramidFace(slope, x, z);
+          const face = slope.faceAt ? slope.faceAt(x, z) : pyramidFace(slope, x, z);
           if (!face || face.y <= y) continue;
           y = face.y;
           if (outN) outN.set(face.nx, face.ny, face.nz);

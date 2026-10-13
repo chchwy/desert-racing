@@ -88,7 +88,7 @@ if (LEVEL.id === 'volcano') {
   const vent = terrain.chunks.get('0,0')?.props.vent;
   if (vent) {
     plumes.push(new Plume(scene, {
-      x: vent.x, y: vent.y, z: vent.z, count: 90, life: 7, rise: 5, spread: 9,
+      x: vent.plume.x, y: vent.plume.y, z: vent.plume.z, count: 90, life: 7, rise: 5, spread: 9,
       size0: 4, size1: 22, smoke: 0x4a403c, glow: 0xff7a30, opacity: 0.5, wind: [8, 3],
     }));
   }
@@ -257,6 +257,7 @@ let deadTimer = 0;
 let grace = GRACE;
 function inLava() {
   if (!LEVEL.lava || player.gap > 2.5) return false;
+  if (lavaVent?.onDeck(player.pos.x, player.pos.z)) return false;
   if (lavaAt(player.pos.x, player.pos.z) > 0.5) return true;
   return !!lavaVent && Math.hypot(player.pos.x - lavaVent.x, player.pos.z - lavaVent.z) < lavaVent.r * 0.95;
 }

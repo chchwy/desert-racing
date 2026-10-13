@@ -10,6 +10,7 @@ import { lavaAt, VOLCANO } from './lava.js';
 const columnGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
 columnGeo.translate(0, 0.5, 0);
 const poolGeo = new THREE.CircleGeometry(1, 40);
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 poolGeo.rotateX(-Math.PI / 2);
 
 const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -80,8 +81,10 @@ function deadTree(b, colliders, rng, x, z, heightAt) {
   colliders.push({ x, z, r: r + 0.3, top: gy + h });
 }
 
-// A lava pool you can hover across, walled by basalt on most of its rim.
-function lavaPoolLandmark(group, colliders, rng, x, z, heightAt) {
+// A lava pool walled by basalt on most of its rim. A basalt causeway runs in from the
+// opening to a round platform in the middle; it is the only safe way in. The causeway
+// is a slope record with its own faceAt, so floorAt lifts the bike onto the stone.
+function lavaPoolLandmark(group, colliders, slopes, rng, x, z, heightAt) {
   const R = 22;
   let top = -Infinity;
   for (let a = 0; a < 12; a++) {
@@ -107,7 +110,57 @@ function lavaPoolLandmark(group, colliders, rng, x, z, heightAt) {
     colliders.push({ x: px, z: pz, r: 1.8, top: gy + h });
   }
   b.column.build(group);
-  return { x, y: top + 0.3, z, r: R };
+
+  const deckY = top + 0.75;
+  // The rim loop skips the columns farthest from `gap`, so the opening faces gap + PI.
+  const ux = -Math.cos(gap);
+  const uz = -Math.sin(gap);
+  const yaw = Math.atan2(ux, uz); // local +z points out through the opening
+  const half = 4;
+  const platR = 6;
+  const flat = R + 1;
+  const rampLen = 8;
+  const gOut = heightAt(x + ux * (flat + rampLen), z + uz * (flat + rampLen));
+  const thick = 3;
+  const deck = new THREE.Mesh(boxGeo, basalt);
+  deck.scale.set(half * 2, thick, flat);
+  deck.position.set(x + ux * flat * 0.5, deckY - thick / 2, z + uz * flat * 0.5);
+  deck.rotation.y = yaw;
+  const drop = deckY - gOut;
+  const pitch = Math.atan2(drop, rampLen);
+  const ramp = new THREE.Mesh(boxGeo, basalt);
+  ramp.scale.set(half * 2, thick, Math.hypot(rampLen, drop) + 0.4);
+  ramp.rotation.set(pitch, yaw, 0, 'YXZ');
+  const mid = flat + rampLen / 2;
+  ramp.position.set(x + ux * mid, (deckY + gOut) / 2 - (thick / 2) * Math.cos(pitch), z + uz * mid);
+  const plat = new THREE.Mesh(columnGeo, basalt);
+  plat.scale.set(platR, thick, platR);
+  plat.position.set(x, deckY - thick, z);
+  for (const m of [deck, ramp, plat]) {
+    m.castShadow = m.receiveShadow = true;
+    group.add(m);
+  }
+  const s = drop / rampLen;
+  const nl = Math.hypot(s, 1);
+  slopes.push({
+    x,
+    z,
+    plinthHalf: R + rampLen,
+    // the stone surface at (px, pz), or null off the causeway
+    faceAt(px, pz) {
+      const dx = px - x;
+      const dz = pz - z;
+      const along = dx * ux + dz * uz;
+      const side = Math.abs(dz * ux - dx * uz);
+      if (Math.hypot(dx, dz) < platR || (side < half && along >= 0 && along <= flat)) return { y: deckY, nx: 0, ny: 1, nz: 0 };
+      if (side < half && along > flat && along < flat + rampLen) {
+        return { y: deckY - (along - flat) * s, nx: ux * s / nl, ny: 1 / nl, nz: uz * s / nl };
+      }
+      return null;
+    },
+  });
+  // The small plume rises from the far side of the pool, away from the platform.
+  return { x, y: top + 0.3, z, r: R, onDeck: (px, pz) => slopes[slopes.length - 1].faceAt(px, pz) !== null, plume: { x: x - ux * R * 0.55, y: top + 0.3, z: z - uz * R * 0.55 } };
 }
 
 export function buildVolcanoProps(cx, cz, size, heightAt) {
@@ -125,7 +178,7 @@ export function buildVolcanoProps(cx, cz, size, heightAt) {
   let vent = null;
 
   if (cx === 0 && cz === 0) {
-    vent = lavaPoolLandmark(group, colliders, mulberry32(hashSeed(13, 3)), LANDMARK_X, LANDMARK_Z, heightAt);
+    vent = lavaPoolLandmark(group, colliders, slopes, mulberry32(hashSeed(13, 3)), LANDMARK_X, LANDMARK_Z, heightAt);
   }
 
   const dry = (x, z) => lavaAt(x, z) < 0.05;
