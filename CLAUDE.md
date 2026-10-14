@@ -26,7 +26,7 @@ URL flags, read in `src/main.js`:
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
 
-`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
+`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
 
 A ~98 MB reference mp4 sits untracked in the repo root. The game does not load it. Do not commit it.
 
@@ -87,6 +87,9 @@ The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.
 | `src/camera.js` | Chase / side / front, mouse orbit, right-stick look |
 | `src/bike.js` | Hover-bike from primitives. Thrusters. Mounts the rider |
 | `src/riders/cat.js` | Cat GLB, seat fit, wind shader |
+| `src/riders/animals.js` | Primitive animal riders for the rivals |
+| `src/rivals.js` | Rival AI racers, bike-to-bike collisions |
+| `src/sound.js` | Synthesized crash sound |
 | `src/terrain.js` | `heightAt`, chunk streaming, prop hookup |
 | `src/props.js` | Ruins, pillars, rocks, sphinx, pyramids, colliders |
 | `src/jungle.js` | Rainforest trees, palms, ferns, boulders, stepped temple |
@@ -140,7 +143,13 @@ Wind is a vertex shader, not a second mesh and not a CPU pass over the vertices.
 
 The tail bends as a 5-joint chain (`uTailPivot`), rotated tip-first. It does not translate vertices. The cat mesh is two unstitched shells, and the tail runs across both. `tailDistances` walks the surface from the tip with Dijkstra, which only reaches one shell. That walk traces the spine and the tube radius. Every vertex inside the tube, on either shell, takes `aWind.x` from its closest point on the spine. Keep the distances in a `Float64Array` and settle each vertex once: a `Float32Array` made the heap loop never end and froze the page at load.
 
-`Bike.update` calls `this.rider.userData.animate(time, s)` with `{ throttle, boost, speed, lean }`. The old capsule rider and its twin-tail loop are gone. Do not add another animal unless asked.
+`Bike.update` calls `this.rider.userData.animate(time, s)` with `{ throttle, boost, speed, lean }`. The old capsule rider and its twin-tail loop are gone.
+
+## Rivals
+
+Every level has five animal rivals on the same hover-bikes (`src/rivals.js`, lineups per level in `LINEUP`). Their riders are primitives from `src/riders/animals.js` (`SPECIES`, `buildAnimalRider`), not GLBs; the cat stays the player's. `Bike` takes `{ rider, veinColor, lights }`: rivals pass their own builder, a vein color, and `lights: false` (ten extra point lights cost every lit material). Each rival drives its own `Player` through a fake input (`pad` plus `hit('Space')`), so hover, slopes and colliders match the player. It aims for a slot ahead or behind and to one side of the player that drifts over time, swerves around colliders, boosts to catch up and hops lava. Past `LOST` (320 m), in lava, on a seabed hazard or 80 m under the player, it respawns 70–110 m behind the player. `regroup` puts them back on the start grid on respawn and on R.
+
+Bikes collide as cylinders (`BIKE_R`, `BIKE_H`) and trade closing speed with some bounce. `src/sound.js` `crash(strength)` synthesizes a loud hit (noise, thump, metal clang through a compressor). It plays for bike-to-bike hits and for hard hits into colliders (`Player.bump`, the closing speed at the push-out), faded with distance from the camera. Audio starts on the first key, click or touch.
 
 ## Verify
 

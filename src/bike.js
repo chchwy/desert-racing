@@ -123,7 +123,7 @@ function glowTexture() {
 }
 
 class Thruster {
-  constructor(parent, x, y, z, seed) {
+  constructor(parent, x, y, z, seed, light = true) {
     this.root = new THREE.Group();
     this.root.position.set(x, y, z);
     parent.add(this.root);
@@ -179,9 +179,12 @@ class Thruster {
     this.glow.position.z = -1.2;
     this.root.add(this.glow);
 
-    this.light = new THREE.PointLight(0x7fd8ff, 0, 12, 2);
-    this.light.position.z = -2.4;
-    this.root.add(this.light);
+    // Rival bikes skip the light: a dozen extra point lights would cost every lit material.
+    this.light = light ? new THREE.PointLight(0x7fd8ff, 0, 12, 2) : null;
+    if (this.light) {
+      this.light.position.z = -2.4;
+      this.root.add(this.light);
+    }
 
     this.tip = new THREE.Object3D();
     this.root.add(this.tip);
@@ -200,14 +203,17 @@ class Thruster {
     const g = 0.6 + power * 1.4 + boost * 0.9 + Math.sin(time * 47) * 0.08;
     this.glow.scale.set(g, g, 1);
     this.glow.material.opacity = 0.2 + power * 0.8;
-    this.light.intensity = 1 + power * 5 + boost * 5;
+    if (this.light) this.light.intensity = 1 + power * 5 + boost * 5;
     this.nozzleMat.color.copy(NOZZLE_COLOR).multiplyScalar(0.35 + power * 0.65 + boost * 0.4);
     this.tip.position.z = -0.9 - len * 0.75;
   }
 }
 
+// The player's bike has the cat and thruster lights. Rivals pass their own rider builder,
+// a vein color to tell them apart, and lights: false.
 export class Bike {
-  constructor() {
+  constructor({ rider = buildCatRider, veinColor = null, lights = true } = {}) {
+    const veins = veinColor ? new THREE.MeshBasicMaterial({ color: veinColor }) : veinMat;
     this.root = new THREE.Group(); // position + yaw
     this.tilt = new THREE.Group(); // pitch / roll / hover bob
     this.root.add(this.tilt);
@@ -247,20 +253,20 @@ export class Bike {
     // purple veins along the hull
     const vein = new THREE.BoxGeometry(0.025, 0.025, 1.8);
     for (const sx of [-1, 1]) {
-      mesh(vein, veinMat, body, { p: [sx * 0.43, 0.6, 0.15], r: [0.05, sx * 0.04, 0] });
-      mesh(vein, veinMat, body, { p: [sx * 0.3, 0.3, 0.35], s: [1, 1, 0.6], r: [-0.1, 0, 0] });
+      mesh(vein, veins, body, { p: [sx * 0.43, 0.6, 0.15], r: [0.05, sx * 0.04, 0] });
+      mesh(vein, veins, body, { p: [sx * 0.3, 0.3, 0.35], s: [1, 1, 0.6], r: [-0.1, 0, 0] });
     }
     // struts to the thrusters
     for (const sx of [-1, 1]) {
       mesh(new THREE.BoxGeometry(0.6, 0.18, 0.5), trimMat, body, { p: [sx * 0.7, 0.62, -0.3] });
     }
 
-    this.thrusters = [new Thruster(body, 1.15, 0.7, -0.3, 0), new Thruster(body, -1.15, 0.7, -0.3, 3.3)];
+    this.thrusters = [new Thruster(body, 1.15, 0.7, -0.3, 0, lights), new Thruster(body, -1.15, 0.7, -0.3, 3.3, lights)];
 
-    this.rider = buildCatRider(body);
+    this.rider = rider(body);
 
     this.root.traverse((o) => {
-      if (o.isMesh && o.material !== veinMat && !o.material.isMeshBasicMaterial && !(o.material instanceof THREE.ShaderMaterial)) {
+      if (o.isMesh && o.material !== veinMat && o.material !== veins && !o.material.isMeshBasicMaterial && !(o.material instanceof THREE.ShaderMaterial)) {
         o.castShadow = true;
       }
     });

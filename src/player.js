@@ -94,6 +94,7 @@ export class Player {
     this.airTime = 0;
     this.landImpact = 0;
     this.jumpTimer = 0; // hover field is off briefly after a jump
+    this.bump = 0; // hardest hit into a solid since the caller last cleared it (m/s)
     this.reset();
   }
 
@@ -215,6 +216,7 @@ export class Player {
           this.vel.z -= nz * vn * 1.4;
           this.vel.multiplyScalar(0.7);
           this.landImpact = Math.min(1, -vn / 30);
+          this.bump = Math.max(this.bump, -vn);
         }
       }
     }

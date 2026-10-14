@@ -12,6 +12,8 @@ import { Plume } from './plume.js';
 import { FishSchools } from './fish.js';
 import { swellUniforms } from './reef.js';
 import { Sea } from './sea.js';
+import { Rivals } from './rivals.js';
+import { crash } from './sound.js';
 import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -97,6 +99,8 @@ if (LEVEL.id === 'volcano') {
 }
 
 const dust = new Dust(scene);
+// Animal rivals on hover-bikes, racing in a pack around the player.
+const rivals = new Rivals(scene, terrain, player, dust);
 const eruption = LEVEL.id === 'volcano' ? new Eruption(scene, dust) : null;
 const lavaVent = LEVEL.id === 'volcano' ? terrain.chunks.get('0,0')?.props.vent : null;
 const trails = [new Ribbon(scene), new Ribbon(scene)];
@@ -286,6 +290,7 @@ function respawn() {
   chase.initialized = false;
   chase.heading = player.yaw;
   grace = GRACE;
+  rivals.regroup();
 }
 
 function frame(timestamp) {
@@ -296,7 +301,10 @@ function frame(timestamp) {
   input.poll();
 
   if (input.hit('KeyC')) chase.cycle();
-  if (input.hit('KeyR') && deadTimer <= 0) player.reset();
+  if (input.hit('KeyR') && deadTimer <= 0) {
+    player.reset();
+    rivals.regroup();
+  }
   const dead = deadTimer > 0;
   if (dead) {
     deadTimer -= dt;
@@ -319,6 +327,10 @@ function frame(timestamp) {
     player.update(dt / 2, input, colliders, (x, z, n) => terrain.floorAt(x, z, n));
     if (i === 0) input.pressed.delete('Space');
   }
+  // A hard hit into a solid is a crash.
+  if (player.bump > 8) crash(0.3 + player.bump / 30);
+  player.bump = 0;
+  rivals.update(dt, time, camera.position, !dead);
   if (!dead && inLava()) die('墜入熔岩');
   if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
   terrain.update(player.pos);
@@ -401,5 +413,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer, input, eruption };
+window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals };
 requestAnimationFrame(frame);
