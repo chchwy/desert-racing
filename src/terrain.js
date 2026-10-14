@@ -568,6 +568,23 @@ export class Terrain {
     return false;
   }
 
+  // The closest unbroken breakable (an ice spire) within range of a point, or null.
+  nearestBreakable(p, range) {
+    let best = null;
+    let bestD2 = range * range;
+    for (const chunk of this.chunks.values()) {
+      for (const b of chunk.props.breakables) {
+        if (b.broken) continue;
+        const d2 = (b.x - p.x) ** 2 + (b.z - p.z) ** 2;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          best = b;
+        }
+      }
+    }
+    return best;
+  }
+
   // Colliders from props in the 3x3 chunks around a point.
   collidersNear(x, z) {
     const cx = Math.floor(x / CHUNK_SIZE);

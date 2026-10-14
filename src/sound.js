@@ -31,6 +31,25 @@ function envelope(gain, t, peak, decay) {
   gain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
 }
 
+// A two-tone alarm beep. urgency 0..1 raises the pitch as the target gets closer.
+export function alarm(urgency) {
+  if (!ctx || ctx.state !== 'running') return;
+  const t = ctx.currentTime;
+  const f = 880 + urgency * 500;
+  for (const [dt, k] of [[0, 1], [0.09, 1.26]]) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = f * k;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t + dt);
+    g.gain.exponentialRampToValueAtTime(0.28, t + dt + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.08);
+    o.connect(g).connect(out);
+    o.start(t + dt);
+    o.stop(t + dt + 0.1);
+  }
+}
+
 // strength 0..1: how hard the hit was, already scaled down for distance by the caller.
 export function crash(strength) {
   if (!ctx || ctx.state !== 'running' || strength < 0.02) return;
