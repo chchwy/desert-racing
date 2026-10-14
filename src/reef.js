@@ -73,6 +73,7 @@ const GLOW_TONES = [
 ];
 const DEEP = -35; // metres: below this the trench props take over
 const ABYSS = -150; // the abyss floor is carpeted with them
+const ABYSS_TRIES = 1400; // extra samples per chunk that only keep abyss floor spots
 const DRY = (LEVEL.sea ?? Infinity) - 3; // nothing grows above this
 const STEEP = 0.7; // rise over run: steeper ground stays bare
 
@@ -131,34 +132,34 @@ function tubes(b, rng, x, z, heightAt) {
   }
 }
 
-// A cluster of glowing bulbs on short stalks.
-function anemone(b, hazards, rng, x, z, heightAt) {
+// A cluster of glowing bulbs on short stalks. s scales the whole cluster.
+function anemone(b, hazards, rng, x, z, heightAt, s = 1) {
   const gy = heightAt(x, z) - 0.05;
-  hazards.push({ x, z, r: 1.2, top: gy + 1.4 });
+  hazards.push({ x, z, r: 1.2 * s, top: gy + 1.4 * s });
   const tone = pick(rng, GLOW_TONES);
-  const n = 4 + Math.floor(rng() * 6);
+  const n = 4 + Math.floor(rng() * 6 * s);
   for (let i = 0; i < n; i++) {
     const a = rng() * Math.PI * 2;
-    const d = rng() * 0.9;
-    const h = 0.3 + rng() * 0.9;
+    const d = rng() * 0.9 * s;
+    const h = (0.3 + rng() * 0.9) * s;
     const px = x + Math.cos(a) * d;
     const pz = z + Math.sin(a) * d;
-    b.stalk.add(px, gy, pz, 0.05, h, 0.05, a, (rng() - 0.5) * 0.4, 0, srgb(0.5, 0.55, 0.6));
-    const r = 0.12 + rng() * 0.22;
+    b.stalk.add(px, gy, pz, 0.05 * s, h, 0.05 * s, a, (rng() - 0.5) * 0.4, 0, srgb(0.5, 0.55, 0.6));
+    const r = (0.12 + rng() * 0.22) * s;
     b.bulb.add(px, gy + h, pz, r, r, r, 0, 0, 0, tone);
   }
 }
 
-// Pale tube worms with glowing red plumes.
-function tubeWorms(b, hazards, rng, x, z, heightAt) {
+// Pale tube worms with glowing red plumes. s scales the whole cluster.
+function tubeWorms(b, hazards, rng, x, z, heightAt, s = 1) {
   const gy = heightAt(x, z) - 0.1;
-  hazards.push({ x, z, r: 1.1, top: gy + 3.2 });
-  const n = 5 + Math.floor(rng() * 8);
+  hazards.push({ x, z, r: 1.1 * s, top: gy + 3.2 * s });
+  const n = 5 + Math.floor(rng() * 8 * s);
   for (let i = 0; i < n; i++) {
-    const px = x + (rng() - 0.5) * 1.6;
-    const pz = z + (rng() - 0.5) * 1.6;
-    const h = 0.8 + rng() * 2.2;
-    const r = 0.06 + rng() * 0.06;
+    const px = x + (rng() - 0.5) * 1.6 * s;
+    const pz = z + (rng() - 0.5) * 1.6 * s;
+    const h = (0.8 + rng() * 2.2) * s;
+    const r = (0.06 + rng() * 0.06) * s;
     b.tube.add(px, gy, pz, r, h, r, 0, (rng() - 0.5) * 0.25, (rng() - 0.5) * 0.25, srgb(0.85, 0.82, 0.75));
     b.bulb.add(px, gy + h, pz, r * 2.2, r * 1.6, r * 2.2, 0, 0, 0, new THREE.Color(2.4, 0.35, 0.3));
   }
@@ -270,6 +271,19 @@ export function buildReefProps(cx, cz, size, heightAt) {
       else tubes(b, rng, x, z, heightAt);
     }
   }
+  // The abyss floor is a thin strip of each chunk: a separate pass, on its own seed so
+  // the reef above keeps its layout, packs it with bigger, denser glowing life.
+  const deep = mulberry32(hashSeed(cx + 14000, cz - 14000));
+  for (let i = 0; i < ABYSS_TRIES; i++) {
+    const x = x0 + deep() * size;
+    const z = z0 + deep() * size;
+    if (heightAt(x, z) > ABYSS) continue;
+    const slope = Math.hypot(heightAt(x + 2, z) - heightAt(x - 2, z), heightAt(x, z + 2) - heightAt(x, z - 2)) / 4;
+    if (slope > STEEP) continue;
+    if (deep() < 0.65) anemone(b, hazards, deep, x, z, heightAt, 1.2 + deep() * 1.3);
+    else tubeWorms(b, hazards, deep, x, z, heightAt, 1.1 + deep() * 0.9);
+  }
+
   if (rng() < 0.5) {
     const x = x0 + 20 + rng() * (size - 40);
     const z = z0 + 20 + rng() * (size - 40);

@@ -109,7 +109,9 @@ function seabedHeight(x, z) {
   const region = smooth(THREE.MathUtils.clamp((fbm(x * 0.0006 + 3.3, z * 0.0006 + 7.1, 2) - 0.45) / 0.2, 0, 1));
   const ridge = 1 - Math.abs(fbm(x * 0.0028 + 1.9, z * 0.0028 + 6.4, 3) * 2 - 1);
   const seamount = ridge ** 3 * 220 * region;
-  let h = shelf + swell + seamount * calm;
+  const k = smooth(THREE.MathUtils.clamp((fbm(x * 0.005 + 21.7, z * 0.005 + 13.9, 2) - 0.66) / 0.1, 0, 1));
+  const knoll = Math.sqrt(k) * 125;
+  let h = shelf + swell + (seamount + knoll) * calm;
   h += (terrace(h, 7) - h) * 0.55 * calm;
 
   // Trenches follow the zero line of a warped noise field: the outer wall, then the
