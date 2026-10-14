@@ -146,6 +146,9 @@ export const LEVELS = {
     haze: 0x1a5870,
     fogNear: 6,
     fogFar: 420, // water swallows the view, but trench walls and seamounts still loom
+    sea: 110, // the water surface, metres; the start lies about 86 m below it
+    air: { haze: 0xcfe4ee, fogNear: 80, fogFar: 3200, zenith: 0x3d8fd6, mid: 0x9cc8e8 }, // above it
+    abyss: 0x02060b, // fog and haze color in the deepest water
     caustics: true,
     weather: [
       // Bubbles rising, then marine snow drifting down.
@@ -161,7 +164,8 @@ export const LEVELS = {
       crest: srgb(0.7, 0.71, 0.6),
       shade: srgb(0.3, 0.36, 0.36), // reef rock
       steep: [3.6, 0.5, 0.75], // bare rock on trench walls and seamount flanks
-      deep: { color: srgb(0.06, 0.18, 0.26), from: 5, span: 80, most: 0.85 }, // darker with depth
+      deep: { color: srgb(0.01, 0.03, 0.05), from: 10, span: 300, most: 0.97 }, // darker with depth
+      island: srgb(0.52, 0.5, 0.36), // dry rock and scrub above the surface
       ripple: true,
       roughness: 0.9,
       normalScale: 0.35,

@@ -11,6 +11,7 @@ import { Eruption } from './eruption.js';
 import { Plume } from './plume.js';
 import { FishSchools } from './fish.js';
 import { swellUniforms } from './reef.js';
+import { Sea } from './sea.js';
 import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -73,8 +74,9 @@ backdrop?.update(player.pos, true);
 const weather = (LEVEL.weather ?? []).map((w) => new Weather(scene, w));
 const shatter = LEVEL.id === 'snow' ? new Shatter(scene, ice) : null;
 
-// Seabed: schools of fish around the bike.
+// Seabed: schools of fish around the bike, and the water surface overhead.
 const fish = LEVEL.id === 'ocean' ? new FishSchools(scene) : null;
+const sea = LEVEL.sea != null ? new Sea(scene, { sky, hemi, sun, weather, sunDir: SUN_DIR }) : null;
 
 // Volcano: an ash column over the crater, seen from kilometres away, and a smaller
 // smoking, ember-lit plume over the lava pool ahead of the start.
@@ -249,8 +251,8 @@ function frostBurst(spire) {
   }
 }
 
-// Volcano: touching lava, or a lava bomb, ends the run. The bike burns up, the screen
-// flashes, and after a moment it respawns at the start.
+// Volcano: touching lava, or a lava bomb, ends the run, and so does the seabed's glowing
+// life. The bike burns up, the screen flashes, and after a moment it respawns at the start.
 const DEATH_TIME = 1.6;
 const GRACE = 2.5; // seconds after a respawn before bombs count
 let deadTimer = 0;
@@ -318,6 +320,7 @@ function frame(timestamp) {
     if (i === 0) input.pressed.delete('Space');
   }
   if (!dead && inLava()) die('墜入熔岩');
+  if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
   terrain.update(player.pos);
   const gained = terrain.collectCoins(prevPos, player.pos);
   if (gained) {
@@ -369,6 +372,7 @@ function frame(timestamp) {
   swellUniforms.uTime.value = time;
   fish?.update(dt, time, player.pos, player.yaw);
 
+  sea?.update(time, camera);
   sky.position.copy(camera.position);
   sky.material.uniforms.uTime.value = time;
   sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);

@@ -87,10 +87,13 @@ function volcanoHeight(x, z) {
   return plain + cone + lumps - lavaAt(x, z) * 4;
 }
 
-// Seabed. Broad slopes and swells stepped into reef terraces, seamount ridges in some
-// regions, and long winding trenches about 100 m deep with steep walls and a flat floor.
-// The start and the shipwreck sit on calm sand, and no trench crosses them.
+// Seabed. Broad slopes and swells stepped into reef terraces, and in some regions
+// seamount ridges tall enough to break the surface (LEVEL.sea) as islands. Long winding
+// trenches drop TRENCH_DEPTH down steep walls to a ledge, then an abyss slot falls
+// ABYSS_DEPTH more, past where the light and the fog reach. The start and the shipwreck
+// sit on calm sand, and no trench crosses them.
 const TRENCH_DEPTH = 100;
+const ABYSS_DEPTH = 360;
 
 function terrace(h, step) {
   const k = h / step;
@@ -105,16 +108,18 @@ function seabedHeight(x, z) {
   const swell = fbm(x * 0.003 + 4.4, z * 0.003 + 0.6, 3) * 16;
   const region = smooth(THREE.MathUtils.clamp((fbm(x * 0.0006 + 3.3, z * 0.0006 + 7.1, 2) - 0.45) / 0.2, 0, 1));
   const ridge = 1 - Math.abs(fbm(x * 0.0028 + 1.9, z * 0.0028 + 6.4, 3) * 2 - 1);
-  const seamount = ridge ** 3 * 60 * region;
+  const seamount = ridge ** 3 * 220 * region;
   let h = shelf + swell + seamount * calm;
   h += (terrace(h, 7) - h) * 0.55 * calm;
 
-  // Trenches follow the zero line of a warped noise field.
+  // Trenches follow the zero line of a warped noise field: the outer wall, then the
+  // abyss down its middle.
   const wx = x + (fbm(x * 0.0012 + 5.5, z * 0.0012, 3) - 0.5) * 400;
   const wz = z + (fbm(x * 0.0012, z * 0.0012 + 2.8, 3) - 0.5) * 400;
   const c = Math.abs(fbm(wx * 0.0011 + 9.9, wz * 0.0011 + 3.7, 3) - 0.5);
   const cut = smooth(THREE.MathUtils.clamp((0.085 - c) / 0.06, 0, 1));
-  h -= cut * TRENCH_DEPTH * calm;
+  const abyss = smooth(THREE.MathUtils.clamp((0.04 - c) / 0.03, 0, 1));
+  h -= (cut * TRENCH_DEPTH + abyss * ABYSS_DEPTH) * calm;
 
   const sand = (fbm(x * 0.02, z * 0.02, 2) - 0.5) * 1.6;
   return h + sand * (1 - cut * 0.7);
@@ -175,7 +180,7 @@ const CAUSTICS = /* glsl */ `
   }
   c /= 4.0;
   c = 1.17 - pow(c, 1.4);
-  float web = clamp(pow(abs(c), 8.0), 0.0, 2.0) * smoothstep(-70.0, 0.0, vGroundY); // light fades with depth
+  float web = clamp(pow(abs(c), 8.0), 0.0, 2.0) * smoothstep(SEA - 200.0, SEA - 60.0, vGroundY) * step(vGroundY, SEA); // light fades with depth
   reflectedLight.directDiffuse *= 1.0 + web * 1.4;
   reflectedLight.indirectDiffuse *= 1.0 + web * 0.35;
 }
@@ -195,7 +200,7 @@ varying float vGroundY;
         vGroundY = position.y;`);
     let fs = GROUND_NOISE + shader.fragmentShader;
     if (LEVEL.lava) fs = fs.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>${LAVA_GLOW}`);
-    if (LEVEL.caustics) fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>${CAUSTICS}`);
+    if (LEVEL.caustics) fs = `const float SEA = ${(LEVEL.sea ?? 0).toFixed(1)};\n` + fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>${CAUSTICS}`);
     shader.fragmentShader = fs;
   };
   material.customProgramCacheKey = () => `terrain-ground-${LEVEL.id}`;
@@ -300,9 +305,10 @@ function groundColor(x, z, nrm, c, lava = LAVA ? lavaAt(x, z) : 0, y = 0) {
   const [gain, offset, most] = steep;
   c.lerp(shade, THREE.MathUtils.clamp(slope * gain - offset, 0, most));
   if (lava > 0) c.lerp(LEVEL.ground.lava, lava);
-  // Underwater, the deep floor fades toward dark blue.
-  const { deep } = LEVEL.ground;
+  // Underwater, the deep floor fades toward dark blue, and islands dry out above the surface.
+  const { deep, island } = LEVEL.ground;
   if (deep) c.lerp(deep.color, THREE.MathUtils.clamp((deep.from - y) / deep.span, 0, deep.most));
+  if (island) c.lerp(island, THREE.MathUtils.clamp((y - LEVEL.sea - 2) / 10, 0, 1) * Math.max(0.9 - slope * 3, 0));
   return c;
 }
 
@@ -540,6 +546,24 @@ export class Terrain {
       }
     }
     return hits;
+  }
+
+  // True when a point touches a hazard (the seabed's glowing life) in the 3x3 chunks
+  // around it. pad is how far the bike reaches past its center.
+  hazardHit(p, pad = 1) {
+    const cx = Math.floor(p.x / CHUNK_SIZE);
+    const cz = Math.floor(p.z / CHUNK_SIZE);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const hazards = this.chunks.get(this.key(cx + dx, cz + dz))?.props.hazards;
+        if (!hazards) continue;
+        for (const h of hazards) {
+          if (p.y > h.top + pad) continue;
+          if ((p.x - h.x) ** 2 + (p.z - h.z) ** 2 < (h.r + pad) ** 2) return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Colliders from props in the 3x3 chunks around a point.

@@ -2,10 +2,13 @@ import * as THREE from 'three';
 import { fbm, mulberry32, hashSeed } from './noise.js';
 import { rockGeo, groundMin, yawOffset, LANDMARK_X, LANDMARK_Z, LANDMARK_CLEAR } from './props.js';
 import { Batch, trunkGeo, canopyGeo } from './jungle.js';
+import { LEVEL } from './levels.js';
 
 // Seabed props: kelp forests that sway in the swell, coral gardens (brain, branching,
 // fan, tube sponges), reef rocks, and a shipwreck ahead of the start. Trench walls stay
 // bare, and down in the dark the trenches grow glowing anemones and tube worms instead.
+// The glowing life stings: each cluster leaves a hazard { x, z, r, top } that kills the
+// bike on touch (main.js). Nothing grows above the surface.
 
 const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
 
@@ -69,6 +72,8 @@ const GLOW_TONES = [
   new THREE.Color(0.2, 1.6, 2.4), new THREE.Color(1.8, 0.4, 2.2), new THREE.Color(0.6, 0.8, 2.6), new THREE.Color(0.3, 2.2, 1.4),
 ];
 const DEEP = -35; // metres: below this the trench props take over
+const ABYSS = -150; // the abyss floor is carpeted with them
+const DRY = (LEVEL.sea ?? Infinity) - 3; // nothing grows above this
 const STEEP = 0.7; // rise over run: steeper ground stays bare
 
 const KELP_TONES = [srgb(0.5, 0.58, 0.2), srgb(0.6, 0.55, 0.2), srgb(0.44, 0.54, 0.22)];
@@ -127,8 +132,9 @@ function tubes(b, rng, x, z, heightAt) {
 }
 
 // A cluster of glowing bulbs on short stalks.
-function anemone(b, rng, x, z, heightAt) {
+function anemone(b, hazards, rng, x, z, heightAt) {
   const gy = heightAt(x, z) - 0.05;
+  hazards.push({ x, z, r: 1.2, top: gy + 1.4 });
   const tone = pick(rng, GLOW_TONES);
   const n = 4 + Math.floor(rng() * 6);
   for (let i = 0; i < n; i++) {
@@ -144,8 +150,9 @@ function anemone(b, rng, x, z, heightAt) {
 }
 
 // Pale tube worms with glowing red plumes.
-function tubeWorms(b, rng, x, z, heightAt) {
+function tubeWorms(b, hazards, rng, x, z, heightAt) {
   const gy = heightAt(x, z) - 0.1;
+  hazards.push({ x, z, r: 1.1, top: gy + 3.2 });
   const n = 5 + Math.floor(rng() * 8);
   for (let i = 0; i < n; i++) {
     const px = x + (rng() - 0.5) * 1.6;
@@ -218,6 +225,7 @@ export function buildReefProps(cx, cz, size, heightAt) {
   const group = new THREE.Group();
   const colliders = [];
   const slopes = [];
+  const hazards = [];
   const rng = mulberry32(hashSeed(cx + 13000, cz - 13000));
   const b = {
     kelp: new Batch(kelpGeo, kelpMat, { shadow: false, colors: true }),
@@ -241,11 +249,11 @@ export function buildReefProps(cx, cz, size, heightAt) {
     const z = z0 + rng() * size;
     const y = heightAt(x, z);
     const slope = Math.hypot(heightAt(x + 2, z) - heightAt(x - 2, z), heightAt(x, z + 2) - heightAt(x, z - 2)) / 4;
-    if (slope > STEEP) continue;
+    if (slope > STEEP || y > DRY) continue;
     if (y < DEEP) {
-      const roll = rng();
-      if (roll < 0.22) anemone(b, rng, x, z, heightAt);
-      else if (roll < 0.34) tubeWorms(b, rng, x, z, heightAt);
+      const roll = rng() * (y < ABYSS ? 0.4 : 1);
+      if (roll < 0.22) anemone(b, hazards, rng, x, z, heightAt);
+      else if (roll < 0.34) tubeWorms(b, hazards, rng, x, z, heightAt);
       continue;
     }
     const forest = fbm(x * 0.008 + 2.5, z * 0.008 + 9.1, 2);
@@ -265,9 +273,9 @@ export function buildReefProps(cx, cz, size, heightAt) {
   if (rng() < 0.5) {
     const x = x0 + 20 + rng() * (size - 40);
     const z = z0 + 20 + rng() * (size - 40);
-    if (clearOfSpawn(x, z, 8)) rockPile(b, colliders, rng, x, z, heightAt);
+    if (clearOfSpawn(x, z, 8) && heightAt(x, z) < DRY) rockPile(b, colliders, rng, x, z, heightAt);
   }
 
   for (const batch of Object.values(b)) batch.build(group);
-  return { group, colliders, slopes };
+  return { group, colliders, slopes, hazards };
 }

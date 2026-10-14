@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { heightAt } from './terrain.js';
+import { LEVEL } from './levels.js';
+
+const SEA_TOP = (LEVEL.sea ?? Infinity) - 4; // schools stay under the surface
 
 // Schools of fish around the bike. Each school wanders as a group a few metres above
 // the seabed; its fish hold loose offsets around the school's centre, swim with a tail
@@ -92,7 +95,7 @@ export class FishSchools {
     school.x = bike.x + Math.sin(a) * d;
     school.z = bike.z + Math.cos(a) * d;
     school.depth = 2 + Math.random() * 6;
-    school.y = heightAt(school.x, school.z) + school.depth;
+    school.y = Math.min(heightAt(school.x, school.z) + school.depth, SEA_TOP);
     school.heading = Math.random() * Math.PI * 2;
     school.turn = 0;
     school.speed = 3 + Math.random() * 4;
@@ -111,7 +114,7 @@ export class FishSchools {
       s.heading += s.turn * dt;
       s.x += Math.sin(s.heading) * s.speed * dt;
       s.z += Math.cos(s.heading) * s.speed * dt;
-      s.y = THREE.MathUtils.damp(s.y, heightAt(s.x, s.z) + s.depth, 1.5, dt);
+      s.y = THREE.MathUtils.damp(s.y, Math.min(heightAt(s.x, s.z) + s.depth, SEA_TOP), 1.5, dt);
     }
     this.fish.forEach((f, i) => {
       const s = f.school;
