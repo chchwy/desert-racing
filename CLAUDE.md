@@ -47,7 +47,7 @@ Only coins near the bike get a mesh. `coinsInChunk` buckets the trail by chunk, 
 
 `CoinFinder` (`src/finder.js`, every level) floats a yellow `Pointer` 20 m ahead and 7.5 m up, above the ice arrow, at the nearest uncollected disc center within 6 km (`nearestCoin`), until it is collected.
 
-Coin rain (`src/coinrain.js`): within `ZONE` (`COIN_R` + 500 m) of any disc center, collected or not, up to 1,500 small coins fall in a 180 m box around the bike, spawned ahead by its velocity, lie on the ground `REST` seconds, and recycle. Density fades over the last `FADE` metres. The bike picks one up within `PICK`; each adds `RAIN_WORTH` (100) through `addCoins` and plays `chime`. `take(coin)` lets others remove one; `active` lists the live ones.
+Coin rain (`src/coinrain.js`): within `ZONE` (`COIN_R` + 500 m) of any disc center, collected or not, up to 3,000 small coins fall at 12–28 m/s in a 130 m box around the bike, spawned ahead by its velocity, lie on the ground `REST` seconds, and recycle. Every 6–10 s a burst drops 250 of them in a 14 m column just ahead. One in 20 is a jackpot coin, twice the size, tinted past 1 so it glows, worth `JACKPOT_WORTH` (1,000). Density fades over the last `FADE` metres. The bike picks one up within `PICK`; each adds `RAIN_WORTH` (100) through `addCoins` and plays `chime`. `take(coin)` lets others remove one; `active` lists the live ones.
 
 ## Frame
 
