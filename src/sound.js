@@ -31,6 +31,24 @@ function envelope(gain, t, peak, decay) {
   gain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
 }
 
+// A short bright coin chime, two notes a fifth apart.
+export function chime() {
+  if (!ctx || ctx.state !== 'running') return;
+  const t = ctx.currentTime;
+  for (const [dt, f] of [[0, 1568], [0.06, 2349]]) {
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t + dt);
+    g.gain.exponentialRampToValueAtTime(0.22, t + dt + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.25);
+    o.connect(g).connect(out);
+    o.start(t + dt);
+    o.stop(t + dt + 0.3);
+  }
+}
+
 // A two-tone alarm beep. urgency 0..1 raises the pitch as the target gets closer.
 export function alarm(urgency) {
   if (!ctx || ctx.state !== 'running') return;

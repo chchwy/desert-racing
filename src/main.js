@@ -15,6 +15,7 @@ import { Sea } from './sea.js';
 import { Rivals } from './rivals.js';
 import { crash } from './sound.js';
 import { IceFinder } from './finder.js';
+import { CoinRain } from './coinrain.js';
 import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -102,6 +103,8 @@ if (LEVEL.id === 'volcano') {
 }
 
 const dust = new Dust(scene);
+// Small coins raining around the big discs.
+const coinRain = new CoinRain(scene, terrain);
 // Animal rivals on hover-bikes, racing in a pack around the player.
 const rivals = new Rivals(scene, terrain, player, dust);
 const eruption = LEVEL.id === 'volcano' ? new Eruption(scene, dust) : null;
@@ -337,7 +340,7 @@ function frame(timestamp) {
   if (!dead && inLava()) die('墜入熔岩');
   if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
   terrain.update(player.pos);
-  const gained = terrain.collectCoins(prevPos, player.pos);
+  const gained = terrain.collectCoins(prevPos, player.pos) + coinRain.update(dt, time, player, !dead);
   if (gained) {
     hud.coins.textContent = formatCoinCount();
     hud.coinCount.classList.remove('pop');
@@ -417,5 +420,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals };
+window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain };
 requestAnimationFrame(frame);

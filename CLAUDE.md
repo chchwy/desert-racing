@@ -26,7 +26,7 @@ URL flags, read in `src/main.js`:
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
 
-`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
+`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
 
 A ~98 MB reference mp4 sits untracked in the repo root. The game does not load it. Do not commit it.
 
@@ -43,6 +43,8 @@ RT or left-stick up throttles, LT or left-stick down brakes, the left stick and 
 `src/coins.js` lays exactly 100,000 coins on one bowed trail. Each disc is 2.8 km across (`COIN_R` 1400) and adds 10,000 to the 金幣 counter (`COIN_WORTH`). The readout is the small-coin total, not how many discs were picked up. The center is lifted by the radius (`COIN_LIFT`) or the bottom sinks into the sand, and `Y_REACH` has to cover that lift or a bike on the ground cannot collect. Do not put a second copy of either number in `player.js`.
 
 Only coins near the bike get a mesh. `coinsInChunk` buckets the trail by chunk, and `coinsNear` binary-searches the forward projection. `Terrain.update` keeps the chunk under a coin while its disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim. Nudge only slides the hub out of a solid.
+
+Coin rain (`src/coinrain.js`): within `ZONE` (`COIN_R` + 500 m) of any disc center, collected or not, up to 1,500 small coins fall in a 180 m box around the bike, spawned ahead by its velocity, lie on the ground `REST` seconds, and recycle. Density fades over the last `FADE` metres. The bike picks one up within `PICK`; each adds `RAIN_WORTH` (100) through `addCoins` and plays `chime`. `take(coin)` lets others remove one; `active` lists the live ones.
 
 ## Frame
 
@@ -91,7 +93,8 @@ The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.
 | `src/riders/cat.js` | Cat GLB, seat fit, wind shader |
 | `src/riders/animals.js` | Primitive animal riders for the rivals |
 | `src/rivals.js` | Rival AI racers, bike-to-bike collisions |
-| `src/sound.js` | Synthesized crash sound and finder alarm |
+| `src/coinrain.js` | Small coins raining around the big discs |
+| `src/sound.js` | Synthesized crash, finder alarm, coin chime |
 | `src/terrain.js` | `heightAt`, chunk streaming, prop hookup |
 | `src/props.js` | Ruins, pillars, rocks, sphinx, pyramids, colliders |
 | `src/jungle.js` | Rainforest trees, palms, ferns, boulders, stepped temple |

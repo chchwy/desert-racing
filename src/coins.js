@@ -42,6 +42,11 @@ export function coinCount() {
   return count;
 }
 
+// Small coins picked up outside the big discs (the coin rain).
+export function addCoins(n) {
+  count += n;
+}
+
 export function formatCoinCount(n = count) {
   return n.toLocaleString('zh-Hant');
 }
