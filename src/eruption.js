@@ -3,15 +3,18 @@ import { heightAt } from './terrain.js';
 import { VOLCANO } from './lava.js';
 import { puffTexture } from './plume.js';
 
-// Random eruptions of the volcano level's crater. Every 35–70 s the crater blows: an
-// ash column shoots up, and lava bombs arc out of it. Most land on the cone; when the
-// bike is within range some are aimed at where it is heading. A bomb leaves a smoke
-// trail through `Dust` and splashes into a glowing splat that cools away.
+// Eruptions of the volcano level's crater. Every 9–15 s the crater blows: an ash column
+// shoots up, and lava bombs arc out of it. Most land on the cone; some are aimed at
+// where the bike is heading. Between eruptions the crater keeps lobbing a bomb every
+// second or so at the ground around the bike (never closer than SHOWER_MIN to its
+// path), so lava keeps falling nearby. A bomb leaves a smoke trail through `Dust` and
+// splashes into a glowing splat that cools away.
 // `update` reports a new eruption and whether a bomb hit the bike.
 
-const MAX = 90;
+const MAX = 160;
 const G = 20;
-const AIM_RANGE = 2600; // bike within this of the crater draws aimed bombs
+const SHOWER_MIN = 25; // metres: shower bombs land at least this far from the bike's path
+const SHOWER_MAX = 110;
 const SPLAT_LIFE = 3;
 const COLUMN = 220;
 
@@ -24,7 +27,8 @@ export class Eruption {
   constructor(scene, dust) {
     this.dust = dust;
     this.origin = new THREE.Vector3(VOLCANO.x, heightAt(VOLCANO.x, VOLCANO.z) + 20, VOLCANO.z);
-    this.next = 12 + Math.random() * 14;
+    this.next = 3 + Math.random() * 2;
+    this.shower = 1;
     this.t = 0; // seconds since the last eruption started
     this.pending = []; // { at, pos, vel, size }
 
@@ -149,7 +153,7 @@ export class Eruption {
 
   erupt(bikePos, bikeVel) {
     this.t = 0;
-    this.next = 35 + Math.random() * 35;
+    this.next = 9 + Math.random() * 6;
     const o = this.origin;
     // Wide bombs: steep arcs that land on the cone and around its foot.
     for (let i = 0; i < 46; i++) {
@@ -164,23 +168,28 @@ export class Eruption {
       });
     }
     // Aimed bombs: ballistic shots at points around where the bike will be.
-    if (Math.hypot(bikePos.x - o.x, bikePos.z - o.z) > AIM_RANGE) return;
     for (let i = 0; i < 12; i++) {
-      const at = 0.5 + Math.random() * 4;
-      const T = 6 + Math.random() * 3;
-      const lead = at + T;
-      const r = i < 3 ? Math.random() * 18 : 20 + Math.random() * 90;
-      const a = Math.random() * Math.PI * 2;
-      const tx = bikePos.x + bikeVel.x * lead * 0.8 + Math.cos(a) * r;
-      const tz = bikePos.z + bikeVel.z * lead * 0.8 + Math.sin(a) * r;
-      const ty = heightAt(tx, tz);
-      this.pending.push({
-        at,
-        pos: o.clone(),
-        vel: new THREE.Vector3((tx - o.x) / T, (ty - o.y) / T + 0.5 * G * T, (tz - o.z) / T),
-        size: 2.5 + Math.random() * 2,
-      });
+      this.aim(bikePos, bikeVel, 0.5 + Math.random() * 4, i < 3 ? 0 : 20, i < 3 ? 18 : 110);
     }
+  }
+
+  // One ballistic bomb from the crater at a point rMin..rMax from where the bike will
+  // be when it lands, launched `at` seconds into the current eruption clock.
+  aim(bikePos, bikeVel, at, rMin, rMax) {
+    const o = this.origin;
+    const T = 6 + Math.random() * 3;
+    const lead = at - this.t + T;
+    const r = rMin + Math.random() * (rMax - rMin);
+    const a = Math.random() * Math.PI * 2;
+    const tx = bikePos.x + bikeVel.x * lead * 0.8 + Math.cos(a) * r;
+    const tz = bikePos.z + bikeVel.z * lead * 0.8 + Math.sin(a) * r;
+    const ty = heightAt(tx, tz);
+    this.pending.push({
+      at,
+      pos: o.clone(),
+      vel: new THREE.Vector3((tx - o.x) / T, (ty - o.y) / T + 0.5 * G * T, (tz - o.z) / T),
+      size: 2 + Math.random() * 2.5,
+    });
   }
 
   launch(b) {
@@ -219,6 +228,11 @@ export class Eruption {
     if (this.next <= 0) {
       this.erupt(bikePos, bikeVel);
       out.erupted = true;
+    }
+    this.shower -= dt;
+    if (this.shower <= 0) {
+      this.shower = 0.5 + Math.random() * 0.7;
+      this.aim(bikePos, bikeVel, this.t, SHOWER_MIN, SHOWER_MAX);
     }
     this.uniforms.uT.value = this.t;
 
