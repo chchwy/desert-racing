@@ -119,7 +119,8 @@ export class Player {
     const back = Math.max(input.down('KeyS', 'ArrowDown') ? 1 : 0, pad.brake);
     const keySteer = (input.down('KeyA', 'ArrowLeft') ? 1 : 0) - (input.down('KeyD', 'ArrowRight') ? 1 : 0);
     const steer = THREE.MathUtils.clamp(keySteer + pad.steer, -1, 1);
-    const wantBoost = (input.down('ShiftLeft', 'ShiftRight') || pad.boost) && fwdIn > 0.15 && this.energy > 0.02;
+    // Boost is E, not Shift: Shift toggles the IME and opens the Sticky Keys prompt on Windows.
+    const wantBoost = (input.down('KeyE') || pad.boost) && fwdIn > 0.15 && this.energy > 0.02;
 
     // boost energy
     if (wantBoost) this.energy = Math.max(0, this.energy - dt * 0.28);

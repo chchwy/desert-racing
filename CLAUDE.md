@@ -37,7 +37,7 @@ Keyboard stays on `Input`. `Input.poll` runs once per frame and reads one standa
 
 Steer is positive to the rider's left, the same sign as KeyA. A standard pad's axis 0 is positive to the right, and that negation happens only in `readGamepad`. The right stick's positive X matches a mouse drag to the right: chase `orbit` decreases. Do not flip either sign in `player.js`.
 
-RT or left-stick up throttles, LT or left-stick down brakes, the left stick and d-pad steer, A jumps, X or LB holds boost, Y cycles the camera, the right stick orbits, Menu resets. Analog throttle uses the existing thrust term. Chrome hides the pad until the page is focused and a button has been pressed.
+RT or left-stick up throttles, LT or left-stick down brakes, the left stick and d-pad steer, A jumps, E (keyboard), X or LB holds boost, Y cycles the camera, the right stick orbits, Menu resets. Analog throttle uses the existing thrust term. Chrome hides the pad until the page is focused and a button has been pressed.
 
 ## Coins
 

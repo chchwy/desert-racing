@@ -129,7 +129,7 @@ if (demo) {
   input.down = (...codes) =>
     codes.some((c) => {
       if (c === 'KeyW') return true;
-      if (c === 'ShiftLeft') return Math.sin(timer.getElapsed() * 0.4) > 0.6;
+      if (c === 'KeyE') return Math.sin(timer.getElapsed() * 0.4) > 0.6;
       if (c === 'KeyA') return Math.sin(timer.getElapsed() * 0.35) > 0.55;
       if (c === 'KeyD') return Math.sin(timer.getElapsed() * 0.35) < -0.7;
       return keys.has(c);
