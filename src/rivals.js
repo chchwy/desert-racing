@@ -5,6 +5,7 @@ import { buildAnimalRider, SPECIES } from './riders/animals.js';
 import { LEVEL } from './levels.js';
 import { lavaAt } from './lava.js';
 import { crash } from './sound.js';
+import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
 
 // Animal rivals racing alongside the player on the same hover-bikes. Each one drives a
 // Player of its own through a fake input, so the hover, slopes and colliders are the
@@ -57,7 +58,8 @@ export class Rivals {
     this.dust = dust;
     this.cooldown = new Map();
     this.list = LINEUP.map((id, i) => {
-      const bike = new Bike({ rider: buildAnimalRider(SPECIES[id]), veinColor: VEINS[i % VEINS.length], lights: false });
+      const team = i < 2 ? FRIEND : FOE; // two friends, three foes
+      const bike = new Bike({ rider: buildAnimalRider(SPECIES[id]), veinColor: VEINS[i % VEINS.length], lights: false, flag: TEAM_COLOR[team] });
       scene.add(bike.root);
       return {
         id,
@@ -71,9 +73,21 @@ export class Rivals {
         phase: Math.random() * 10,
         skill: 0.85 + Math.random() * 0.25,
         grid: GRID[i],
+        team,
       };
     });
     this.regroup();
+  }
+
+  // The closest rival of a team between min and range from a point: { x, z, d } or null.
+  nearest(team, pos, range, min = 0) {
+    let best = null;
+    for (const r of this.list) {
+      if (r.team !== team) continue;
+      const d = Math.hypot(r.body.pos.x - pos.x, r.body.pos.z - pos.z);
+      if (d < range && d >= min && (!best || d < best.d)) best = { x: r.body.pos.x, z: r.body.pos.z, d };
+    }
+    return best;
   }
 
   // Back to the start grid around the player, facing the player's heading.

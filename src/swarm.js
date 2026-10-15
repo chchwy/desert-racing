@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { heightAt } from './terrain.js';
 import { SPECIES } from './riders/animals.js';
 import { crash } from './sound.js';
+import { flagParts, FLAG_MOUNT, TEAM_COLOR, FRIEND, FOE } from './teams.js';
 
 // A swarm of hover-bikes ridden by animals, hundreds to thousands of them, around the
 // player. Each is a simplified bike-and-rider drawn with one InstancedMesh (plus one for
@@ -11,6 +12,8 @@ import { crash } from './sound.js';
 // Goals: circle the player, roam at random, chase the player, or go pick up a coin
 // from the coin rain. Bikes that stray past FAR respawn around the player. They do not
 // hit props or each other; they do bump the player, with the crash sound.
+// FRIEND_SHARE of them are on the player's team: red flags, and they keep closer, circling
+// the player more often. The rest fly blue. A third InstancedMesh draws the flags.
 
 const FAR = 420; // metres from the player before a bike respawns
 const SPAWN_MIN = 60;
@@ -20,6 +23,7 @@ const TURN = 1.8; // rad/s
 const HIT_R = 2.8; // player-to-bike contact distance
 const NEAR = 140; // within this of the camera, ground height every frame
 const SLICES = 6; // farther bikes refresh their ground height one slice per frame
+const FRIEND_SHARE = 0.3;
 
 const ORBIT = 0;
 const ROAM = 1;
@@ -82,6 +86,12 @@ function glowGeometry() {
 
 const FURS = Object.values(SPECIES).map((s) => new THREE.Color(s.fur));
 
+function flagGeometry() {
+  const g = mergeGeometries(flagParts());
+  g.translate(FLAG_MOUNT.x, FLAG_MOUNT.y, FLAG_MOUNT.z);
+  return g;
+}
+
 export class Swarm {
   constructor(scene, count, player, coinRain) {
     this.n = count;
@@ -102,6 +112,8 @@ export class Swarm {
     this.orbitDir = new Float32Array(n);
     this.orbitA = new Float32Array(n);
     this.coin = new Array(n).fill(null);
+    this.team = new Uint8Array(n);
+    for (let i = 0; i < n; i++) this.team[i] = Math.random() < FRIEND_SHARE ? FRIEND : FOE;
     this.slice = 0;
     this.hitCooldown = 0;
 
@@ -115,11 +127,19 @@ export class Swarm {
     this.glow = new THREE.InstancedMesh(glowGeometry(), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 2.4, 3.2) }), n);
     this.glow.instanceMatrix = this.mesh.instanceMatrix; // same transforms
     this.glow.frustumCulled = false;
+    this.flags = new THREE.InstancedMesh(
+      flagGeometry(),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }),
+      n,
+    );
+    this.flags.instanceMatrix = this.mesh.instanceMatrix;
+    this.flags.frustumCulled = false;
     for (let i = 0; i < n; i++) {
       this.mesh.setColorAt(i, FURS[i % FURS.length]);
+      this.flags.setColorAt(i, TEAM_COLOR[this.team[i]]);
       this.spawn(i, true);
     }
-    scene.add(this.mesh, this.glow);
+    scene.add(this.mesh, this.glow, this.flags);
   }
 
   spawn(i, anywhere) {
@@ -137,10 +157,14 @@ export class Swarm {
   }
 
   pick(i) {
+    const friend = this.team[i] === FRIEND;
     const roll = Math.random();
-    this.mode[i] = roll < 0.4 ? ORBIT : roll < 0.7 ? ROAM : roll < 0.82 ? CHASE : COIN;
+    // Friends mostly ride with the player; foes roam, chase and grab coins more.
+    this.mode[i] = friend
+      ? (roll < 0.65 ? ORBIT : roll < 0.85 ? ROAM : COIN)
+      : (roll < 0.35 ? ORBIT : roll < 0.65 ? ROAM : roll < 0.8 ? CHASE : COIN);
     this.timer[i] = 4 + Math.random() * 8;
-    this.orbitR[i] = 12 + Math.random() * 110;
+    this.orbitR[i] = friend ? 10 + Math.random() * 50 : 12 + Math.random() * 110;
     this.orbitDir[i] = Math.random() < 0.5 ? -1 : 1;
     this.orbitA[i] = Math.atan2(this.z[i] - this.player.pos.z, this.x[i] - this.player.pos.x);
     this.coin[i] = null;
@@ -149,6 +173,24 @@ export class Swarm {
       if (list && list.length) this.coin[i] = list[Math.floor(Math.random() * list.length)];
       else this.mode[i] = ROAM;
     }
+  }
+
+  // The closest bike of a team between min and range from a point: { x, z, d } or null.
+  nearest(team, pos, range, min = 0) {
+    let bi = -1;
+    let bd2 = range * range;
+    const min2 = min * min;
+    for (let i = 0; i < this.n; i++) {
+      if (this.team[i] !== team) continue;
+      const dx = this.x[i] - pos.x;
+      const dz = this.z[i] - pos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bd2 && d2 >= min2) {
+        bd2 = d2;
+        bi = i;
+      }
+    }
+    return bi < 0 ? null : { x: this.x[bi], z: this.z[bi], d: Math.sqrt(bd2) };
   }
 
   update(dt, time, cameraPos, playerAlive) {

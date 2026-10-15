@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { alarm } from './sound.js';
 import { nearestCoin } from './coins.js';
+import { FRIEND, FOE } from './teams.js';
 
 // Arrows that float ahead of the bike and point at a target, like a compass card
 // tilted toward the chase camera: tip up is straight ahead, tip left means turn left.
@@ -9,6 +10,8 @@ import { nearestCoin } from './coins.js';
 // IceFinder (snow level): the nearest unbroken ice spire. An alarm beeps faster and
 // higher the closer it gets, and the reticle tag shows the distance.
 // CoinFinder (every level): a yellow arrow to the nearest big coin not yet collected.
+// TeamFinder (every level): a glowing red arrow to the nearest friend (red flag) and a
+// black one to the nearest foe (blue flag), on either side of the bike's path.
 
 const TILT = -1.0; // radians: the card leans back to face the camera behind the bike
 
@@ -30,8 +33,9 @@ function arrowGeometry() {
 
 class Pointer {
   // color: a little past 1, a soft bloom glow that keeps its shape.
-  constructor(scene, color, { ahead, lift, scale }) {
+  constructor(scene, color, { ahead, lift, scale, side = 0 }) {
     this.ahead = ahead;
+    this.side = side; // metres to the rider's left (negative: right)
     this.lift = lift;
     this.color = color;
     this.mat = new THREE.MeshBasicMaterial({ color: color.clone(), transparent: true, opacity: 0.9, depthTest: false });
@@ -55,8 +59,11 @@ class Pointer {
   // Points at (tx, tz); pulse speeds up with `near` (0..1).
   show(player, tx, tz, time, near) {
     const f = player.forward;
+    // Left of the rider is (cos yaw, 0, -sin yaw), the frame's local +X.
+    const lx = Math.cos(player.yaw) * this.side;
+    const lz = -Math.sin(player.yaw) * this.side;
     this.root.visible = true;
-    this.root.position.set(player.pos.x + f.x * this.ahead, player.pos.y + this.lift + Math.sin(time * 4) * 0.15, player.pos.z + f.z * this.ahead);
+    this.root.position.set(player.pos.x + f.x * this.ahead + lx, player.pos.y + this.lift + Math.sin(time * 4) * 0.15, player.pos.z + f.z * this.ahead + lz);
     this.root.rotation.y = player.yaw;
     this.needle.rotation.y = Math.atan2(tx - player.pos.x, tz - player.pos.z) - player.yaw;
     this.mat.color.copy(this.color).multiplyScalar(0.75 + 0.25 * Math.sin(time * (6 + near * 14)));
@@ -113,5 +120,33 @@ export class CoinFinder {
     }
     const d = Math.hypot(c.x - player.pos.x, c.z - player.pos.z);
     this.arrow.show(player, c.x, c.z, time, 1 - THREE.MathUtils.clamp(d / COIN_RANGE, 0, 1));
+  }
+}
+
+const TEAM_RANGE = 400; // metres
+const TEAM_MIN = 12; // bikes already alongside are not worth pointing at
+
+export class TeamFinder {
+  constructor(scene, groups) {
+    this.groups = groups; // anything with nearest(team, pos, range): the swarm, the rivals
+    this.friend = new Pointer(scene, new THREE.Color(2.4, 0.18, 0.12), { ahead: 16, lift: 3.6, scale: 1.0, side: 5 });
+    this.foe = new Pointer(scene, new THREE.Color(0.02, 0.02, 0.025), { ahead: 16, lift: 3.6, scale: 1.0, side: -5 });
+  }
+
+  closest(team, pos) {
+    let best = null;
+    for (const g of this.groups) {
+      const c = g.nearest(team, pos, TEAM_RANGE, TEAM_MIN);
+      if (c && (!best || c.d < best.d)) best = c;
+    }
+    return best;
+  }
+
+  update(time, player, alive) {
+    for (const [team, arrow] of [[FRIEND, this.friend], [FOE, this.foe]]) {
+      const c = alive ? this.closest(team, player.pos) : null;
+      if (c) arrow.show(player, c.x, c.z, time, 1 - c.d / TEAM_RANGE);
+      else arrow.hide();
+    }
   }
 }

@@ -107,7 +107,8 @@ The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.
 | `src/snow.js` | Snowy pines, capped boulders, ice crystals |
 | `src/weather.js` | Snow, ash and ember particles around the camera |
 | `src/shatter.js` | Ice shards when a crystal is smashed |
-| `src/finder.js` | Pointing arrows: ice crystals (with alarm), big coins |
+| `src/finder.js` | Pointing arrows: ice crystals (with alarm), big coins, friend and foe |
+| `src/teams.js` | Team colors and the flag geometry |
 | `src/lava.js` | Volcano cone position and `lavaAt` |
 | `src/volcano.js` | Basalt columns, ember rocks, dead trees, lava pool |
 | `src/plume.js` | Smoke columns over the crater and the pool |
@@ -162,6 +163,8 @@ Every level has five animal rivals on the same hover-bikes (`src/rivals.js`, lin
 Bikes collide as cylinders (`BIKE_R`, `BIKE_H`) and trade closing speed with some bounce. `src/sound.js` `crash(strength)` synthesizes a loud hit (noise, thump, metal clang through a compressor). It plays for bike-to-bike hits and for hard hits into colliders (`Player.bump`, the closing speed at the push-out), faded with distance from the camera. Audio starts on the first key, click or touch.
 
 The swarm (`src/swarm.js`) is 1,000 more animal bikers by default, `?swarm=N` for 0–10,000. Each is one simplified bike-and-rider geometry (vertex colors; white parts take the instance color as fur) in one `InstancedMesh`, plus a nozzle-glow `InstancedMesh` that shares its `instanceMatrix`. The matrices are written straight into the array (yaw, then lean). They move kinematically over `heightAt` (not `floorAt`, so they pass through pyramids), refreshing the ground every frame within `NEAR` of the camera and one `SLICES`th of the rest per frame. Every 4–12 s each picks a goal: orbit the player, roam, chase the player, or drive to a coin-rain coin and `take` it. Past `FAR` (420 m) one respawns 60–380 m around the player. They ignore props and each other, and bump the player with the crash sound (0.3 s cooldown). 1,000 cost ~0.6 ms a frame, 9,500 ~7 ms.
+
+Teams (`src/teams.js`): the player's team (`FRIEND`) flies red flags, everyone else (`FOE`) blue. `flagParts` is one pole-and-cloth geometry at `FLAG_MOUNT` (the right rear corner, so the player's pole stays off the middle of the view), used by `Bike({ flag })` (the flag swings about its pole) and by a third swarm `InstancedMesh` sharing the swarm's `instanceMatrix`, tinted per instance. The player is red, two of the five rivals are red, and 30 % of the swarm (`FRIEND_SHARE`); friends orbit closer and more often. `TeamFinder` (`src/finder.js`) points a glowing red `Pointer` 5 m to the left at the nearest friend and a black one 5 m to the right at the nearest foe, 12–400 m away, through `nearest(team, pos, range, min)` on the swarm and the rivals.
 
 ## Verify
 

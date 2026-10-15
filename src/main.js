@@ -14,9 +14,10 @@ import { swellUniforms } from './reef.js';
 import { Sea } from './sea.js';
 import { Rivals } from './rivals.js';
 import { crash } from './sound.js';
-import { IceFinder, CoinFinder } from './finder.js';
+import { IceFinder, CoinFinder, TeamFinder } from './finder.js';
 import { CoinRain } from './coinrain.js';
 import { Swarm } from './swarm.js';
+import { TEAM_COLOR, FRIEND } from './teams.js';
 import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -66,7 +67,7 @@ const terrain = new Terrain(scene, renderer);
 const player = new Player();
 terrain.update(player.pos, true);
 
-const bike = new Bike();
+const bike = new Bike({ flag: TEAM_COLOR[FRIEND] }); // the player's team flies red
 scene.add(bike.root);
 
 // Tall grass streams around the bike on the prairie only.
@@ -122,6 +123,8 @@ const chase = new ChaseCamera(camera, canvas);
 const params = new URLSearchParams(location.search);
 // A swarm of animal bikers around the player: 1000 by default, ?swarm=N for 0..10000.
 const swarm = new Swarm(scene, THREE.MathUtils.clamp(Number(params.get('swarm') ?? 1000) || 0, 0, 10000), player, coinRain);
+// Red arrow to the nearest friend, black arrow to the nearest foe.
+const teamFinder = new TeamFinder(scene, [swarm, rivals]);
 const demo = params.has('demo');
 const usePost = !params.has('nopost');
 if (demo) {
@@ -372,6 +375,7 @@ function frame(timestamp) {
   shatter?.update(dt);
   finder?.update(dt, time, player, !dead);
   coinFinder.update(time, player, !dead);
+  teamFinder.update(time, player, !dead);
   speedLines.update(dt, player.pos, player.yaw, player.speed);
 
   grass?.update(player.pos, camera.position, time);

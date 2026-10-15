@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { buildCatRider } from './riders/cat.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { flagParts, FLAG_MOUNT } from './teams.js';
 
 // Local space: +Z forward, +Y up, +X left.
 
@@ -210,9 +212,11 @@ class Thruster {
 }
 
 // The player's bike has the cat and thruster lights. Rivals pass their own rider builder,
-// a vein color to tell them apart, and lights: false.
+// a vein color to tell them apart, and lights: false. flag is the team color.
+const flagGeo = mergeGeometries(flagParts());
+
 export class Bike {
-  constructor({ rider = buildCatRider, veinColor = null, lights = true } = {}) {
+  constructor({ rider = buildCatRider, veinColor = null, lights = true, flag = null } = {}) {
     const veins = veinColor ? new THREE.MeshBasicMaterial({ color: veinColor }) : veinMat;
     this.root = new THREE.Group(); // position + yaw
     this.tilt = new THREE.Group(); // pitch / roll / hover bob
@@ -265,6 +269,15 @@ export class Bike {
 
     this.rider = rider(body);
 
+    this.flag = null;
+    if (flag) {
+      this.flag = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({
+        vertexColors: true, color: flag, emissive: flag, emissiveIntensity: 0.35, roughness: 0.8, side: THREE.DoubleSide,
+      }));
+      this.flag.position.copy(FLAG_MOUNT);
+      body.add(this.flag);
+    }
+
     this.root.traverse((o) => {
       if (o.isMesh && o.material !== veinMat && o.material !== veins && !o.material.isMeshBasicMaterial && !(o.material instanceof THREE.ShaderMaterial)) {
         o.castShadow = true;
@@ -275,6 +288,8 @@ export class Bike {
   update(dt, time, s) {
     for (const t of this.thrusters) t.update(time, s.throttle, s.boost);
     this.rider.userData.animate?.(time, s);
+    // The flag swings about its pole, harder at speed.
+    if (this.flag) this.flag.rotation.y = Math.sin(time * (3 + s.speed * 0.15)) * (0.08 + Math.min(s.speed / 60, 1) * 0.12);
   }
 
   tipWorldPositions(out) {
