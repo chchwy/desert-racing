@@ -33,6 +33,7 @@ const gold = new THREE.MeshStandardMaterial({
   roughness: 0.4,
   emissive: new THREE.Color().setRGB(0.72, 0.42, 0.08, THREE.SRGBColorSpace),
   emissiveIntensity: 1,
+  fog: false, // seen through any level's fog, so the next disc is always in sight
 });
 
 const collected = new Set();
@@ -45,6 +46,11 @@ export function coinCount() {
 // Small coins picked up outside the big discs (the coin rain).
 export function addCoins(n) {
   count += n;
+}
+
+// The war save carries the count across level reloads, and a shot can empty it.
+export function setCoins(n) {
+  count = n;
 }
 
 export function formatCoinCount(n = count) {

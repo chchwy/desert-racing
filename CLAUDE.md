@@ -2,7 +2,7 @@
 
 Endless hover-bike prototype (three.js r186, Vite 8) with six levels: desert, rainforest, grassland, snow mountains, volcano and seabed. Procedural terrain, one generated cat rider, and streamed props. There is no test runner. `README.md` is stale: it still says the rider is primitives and that there are no external models. Trust the code.
 
-The page copy is zh-Hant. Keep new player-facing strings in Traditional Chinese. The HUD counters (擊破 / 捕獲 / 夥伴) are static markup and are not wired to anything.
+The page copy is zh-Hant. Keep new player-facing strings in Traditional Chinese. The HUD counters are wired to the war: 擊破 is foes the player shot, 捕獲 is foes in jail, 夥伴 is friends still free.
 
 ## Git
 
@@ -27,7 +27,7 @@ URL flags, read in `src/main.js`:
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
 
-`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
+`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
 
 A ~98 MB reference mp4 sits untracked in the repo root. The game does not load it. Do not commit it.
 
@@ -37,13 +37,13 @@ Keyboard stays on `Input`. `Input.poll` runs once per frame and reads one standa
 
 Steer is positive to the rider's left, the same sign as KeyA. A standard pad's axis 0 is positive to the right, and that negation happens only in `readGamepad`. The right stick's positive X matches a mouse drag to the right: chase `orbit` decreases. Do not flip either sign in `player.js`.
 
-RT or left-stick up throttles, LT or left-stick down brakes, the left stick and d-pad steer, A jumps, E (keyboard), X or LB holds boost, Y cycles the camera, the right stick orbits, Menu resets. Analog throttle uses the existing thrust term. Chrome hides the pad until the page is focused and a button has been pressed.
+RT or left-stick up throttles, LT or left-stick down brakes, the left stick and d-pad steer, A jumps, E (keyboard), X or LB holds boost, Y cycles the camera, the right stick orbits. R or B (keyboard), pad B fires the air cannon; T, pad RB the machine gun; N spends 10,000 coins to move on a level; Backspace, pad Menu resets (pad buttons press those keys in `Input.poll`). Analog throttle uses the existing thrust term. Chrome hides the pad until the page is focused and a button has been pressed.
 
 ## Coins
 
 `src/coins.js` lays exactly 100,000 coins on one bowed trail. Each disc is 2.8 km across (`COIN_R` 1400) and adds 10,000 to the 金幣 counter (`COIN_WORTH`). The readout is the small-coin total, not how many discs were picked up. The center is lifted by the radius (`COIN_LIFT`) or the bottom sinks into the sand, and `Y_REACH` has to cover that lift or a bike on the ground cannot collect. Do not put a second copy of either number in `player.js`.
 
-Only coins near the bike get a mesh. `coinsInChunk` buckets the trail by chunk, and `coinsNear` binary-searches the forward projection. `Terrain.update` keeps the chunk under a coin while its disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim. Nudge only slides the hub out of a solid.
+Only coins near the bike get a mesh. `coinsInChunk` buckets the trail by chunk, and `coinsNear` binary-searches the forward projection. `Terrain.update` keeps the chunk under a coin while its disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim. The disc material ignores fog, so the next disc shows through any level's haze. Nudge only slides the hub out of a solid.
 
 `CoinFinder` (`src/finder.js`, every level) floats a yellow `Pointer` 20 m ahead and 7.5 m up, above the ice arrow, at the nearest uncollected disc center within 6 km (`nearestCoin`), until it is collected.
 
@@ -109,6 +109,9 @@ The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.
 | `src/shatter.js` | Ice shards when a crystal is smashed |
 | `src/finder.js` | Pointing arrows: ice crystals (with alarm), big coins, friend and foe |
 | `src/teams.js` | Team colors and the flag geometry |
+| `src/war.js` | Team war state across levels, saved in localStorage |
+| `src/weapons.js` | Air cannon and machine gun shots |
+| `src/jail.js` | The jail level's two fenced pens |
 | `src/lava.js` | Volcano cone position and `lavaAt` |
 | `src/volcano.js` | Basalt columns, ember rocks, dead trees, lava pool |
 | `src/plume.js` | Smoke columns over the crater and the pool |
@@ -163,6 +166,14 @@ Every level has five animal rivals on the same hover-bikes (`src/rivals.js`, lin
 Bikes collide as cylinders (`BIKE_R`, `BIKE_H`) and trade closing speed with some bounce. `src/sound.js` `crash(strength)` synthesizes a loud hit (noise, thump, metal clang through a compressor). It plays for bike-to-bike hits and for hard hits into colliders (`Player.bump`, the closing speed at the push-out), faded with distance from the camera. Audio starts on the first key, click or touch.
 
 The swarm (`src/swarm.js`) is 994 more animal bikers by default, `?swarm=N` for 0–10,000. Each is one simplified bike-and-rider geometry (vertex colors; white parts take the instance color as fur) in one `InstancedMesh`, plus a nozzle-glow `InstancedMesh` that shares its `instanceMatrix`. The matrices are written straight into the array (yaw, then lean). They move kinematically over `heightAt` (not `floorAt`, so they pass through pyramids), refreshing the ground every frame within `NEAR` of the camera and one `SLICES`th of the rest per frame. Every 4–12 s each picks a goal: orbit the player, roam, chase the player, or drive to a coin-rain coin and `take` it. Past `FAR` (420 m) one respawns 60–380 m around the player. They ignore props and each other, and bump the player with the crash sound (0.3 s cooldown). 1,000 cost ~0.6 ms a frame, 9,500 ~7 ms.
+
+## War
+
+`src/war.js` holds the team war across the levels, saved in localStorage (`desert-racing-war-1`) so it survives the reload a level change needs. Every rider has a stage: 0–5 is its level (`LEVEL_ORDER`), `JAIL` (6) the jail. Ids: 0 the player, then the rivals (`rivalBase`), then the swarm (`swarmBase`). A rider shot by the other team moves on a stage (`hit`); from the ocean it goes to jail. The team with all 500 in jail loses; `main.js` shows the winner and Enter starts a new war. Only riders whose stage is this page's level are on screen (`placeRider`: swarm `setState` OFF / DRIVE / PARKED, rivals `setActive`). The rest fight off screen in `War.update`, about once a second, at a rate that grows with the foes on their level. The page sets the player's stage, so the picker moves the player too. The save also carries the player's coins and kills.
+
+`src/weapons.js`: the air cannon throws one slow ring (`AIR`), and its owner cannot fire another until it is gone; the gun (`GUN`) fires a burst of four tracers. Shots hit only the other team, die on the ground (`heightAt` above them), and look up targets through a 24 m grid rebuilt each frame from `targets` (reused objects from the swarm and rivals, plus the player). Swarm and rival foes shoot at the player when it is ahead and close (`AIM_CHANCE`, `AIM_ERROR`), and everyone fires wild now and then. Standing still in the full desert, the player lasts about 20–25 s after the 6 s of spawn protection (`PROTECT`). A shot player with 10,000 coins (`SHIELD`) drops to 0 coins and stays; without them, `playerShot` sends it on a level, or to jail, after 1.6 s.
+
+The jail is a seventh level (`LEVELS.jail`, `?level=jail`, not in the picker): a flat yard (`heightAt` is near zero) with two pens fenced by iron bars (`src/jail.js`), red around the origin and blue beside it, each with 500 parking slots (`penSlot`). Bars are 2.2 m apart with colliders, so the bike's padding cannot pass. Jailed swarm riders are parked in their pen; nobody fires there.
 
 Teams (`src/teams.js`): the player's team (`FRIEND`) flies red flags, everyone else (`FOE`) blue. `flagParts` is one pole-and-cloth geometry at `FLAG_MOUNT` (the right rear corner, so the player's pole stays off the middle of the view), used by `Bike({ flag })` (the flag swings about its pole) and by a third swarm `InstancedMesh` sharing the swarm's `instanceMatrix`, tinted per instance. The teams come out even: `main.js` gives the swarm `friends` = half of everyone (player + rivals + swarm) minus the player and the red rivals, so the default 994 makes 500 red (the player, two rivals, 497 bikers) and 500 blue (three rivals, 497 bikers). Friends orbit closer and more often. `TeamFinder` (`src/finder.js`) points a glowing red `Pointer` 5 m to the left at the nearest friend and a black one 5 m to the right at the nearest foe, 12–400 m away, through `nearest(team, pos, range, min)` on the swarm and the rivals.
 

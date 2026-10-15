@@ -39,6 +39,8 @@ const IDLE = {
   jump: false,
   camera: false,
   reset: false,
+  fireAir: false,
+  fireGun: false,
   lookX: 0,
   lookY: 0,
 };
@@ -58,6 +60,8 @@ export function readGamepad(pad) {
     jump: buttonDown(pad, 0),
     camera: buttonDown(pad, 3),
     reset: buttonDown(pad, 9),
+    fireAir: buttonDown(pad, 1), // B: air cannon
+    fireGun: buttonDown(pad, 5), // RB: machine gun
     lookX: rx,
     lookY: ry,
   };

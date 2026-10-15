@@ -172,6 +172,30 @@ export const LEVELS = {
     },
     dust: { color: srgb(0.78, 0.9, 0.92), shade: srgb(0.55, 0.68, 0.7) },
   },
+  // Where riders shot on the last level end up (war.js). Not in the picker.
+  jail: {
+    id: 'jail',
+    name: '監牢',
+    title: 'Jail — prototype',
+    eyebrow: 'JAIL / BATTLE PROTOTYPE',
+    headline: '關進監牢。',
+    sub: '鐵欄杆圍起來的大場地 · 等你的隊伍贏',
+    page: '#b9b6ae',
+    haze: 0xb9b6ae,
+    fogNear: 120,
+    fogFar: 2400,
+    sky: { zenith: 0x55657a, mid: 0x9aa4b0, cover: 0.45, sun: 0.5 },
+    hemi: { sky: 0xc8ccd4, ground: 0x6a665e, intensity: 0.8 },
+    sun: { color: 0xf2eee6, intensity: 2.0 },
+    ground: {
+      base: srgb(0.5, 0.48, 0.44),
+      crest: srgb(0.56, 0.54, 0.5),
+      shade: srgb(0.42, 0.4, 0.37),
+      roughness: 0.95,
+      normalScale: 0.3,
+    },
+    dust: { color: srgb(0.7, 0.68, 0.64), shade: srgb(0.55, 0.53, 0.5) },
+  },
 };
 
 export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow', 'volcano', 'ocean'];

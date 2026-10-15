@@ -33,7 +33,7 @@ export class Input {
     this.keys = new Set();
     this.pressed = new Set();
     this.pad = { ...PAD_IDLE };
-    this._padHeld = { jump: false, camera: false, reset: false };
+    this._padHeld = { jump: false, camera: false, reset: false, fireAir: false, fireGun: false };
     addEventListener('keydown', (e) => {
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
@@ -68,10 +68,16 @@ export class Input {
     this.pad.lookY = snap.lookY;
     if (snap.jump && !this._padHeld.jump) this.pressed.add('Space');
     if (snap.camera && !this._padHeld.camera) this.pressed.add('KeyC');
-    if (snap.reset && !this._padHeld.reset) this.pressed.add('KeyR');
+    // Pad buttons press the same keys: Menu resets (Backspace), B fires the air cannon (R),
+    // RB the machine gun (T).
+    if (snap.reset && !this._padHeld.reset) this.pressed.add('Backspace');
+    if (snap.fireAir && !this._padHeld.fireAir) this.pressed.add('KeyR');
+    if (snap.fireGun && !this._padHeld.fireGun) this.pressed.add('KeyT');
     this._padHeld.jump = snap.jump;
     this._padHeld.camera = snap.camera;
     this._padHeld.reset = snap.reset;
+    this._padHeld.fireAir = snap.fireAir;
+    this._padHeld.fireGun = snap.fireGun;
   }
   endFrame() {
     this.pressed.clear();

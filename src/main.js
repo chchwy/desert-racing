@@ -17,8 +17,12 @@ import { crash } from './sound.js';
 import { IceFinder, CoinFinder, TeamFinder } from './finder.js';
 import { CoinRain } from './coinrain.js';
 import { Swarm } from './swarm.js';
-import { TEAM_COLOR, FRIEND } from './teams.js';
-import { formatCoinCount } from './coins.js';
+import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
+import { formatCoinCount, coinCount, setCoins } from './coins.js';
+import { War, JAIL } from './war.js';
+import { Weapons, AIR, GUN } from './weapons.js';
+import { penSlot } from './jail.js';
+import { OFF, DRIVE, PARKED } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
@@ -126,9 +130,61 @@ const params = new URLSearchParams(location.search);
 const swarmCount = THREE.MathUtils.clamp(Number(params.get('swarm') ?? 994) || 0, 0, 10000);
 const riders = 1 + rivals.list.length + swarmCount;
 const redOutside = 1 + rivals.list.filter((r) => r.team === FRIEND).length;
-const swarm = new Swarm(scene, swarmCount, player, coinRain, THREE.MathUtils.clamp(Math.floor(riders / 2) - redOutside, 0, swarmCount));
+const swarmFriends = THREE.MathUtils.clamp(Math.floor(riders / 2) - redOutside, 0, swarmCount);
+const swarm = new Swarm(scene, swarmCount, player, coinRain, swarmFriends);
 // Red arrow to the nearest friend, black arrow to the nearest foe.
 const teamFinder = new TeamFinder(scene, [swarm, rivals]);
+
+// ------------------------------------------------------------------- war ----
+// Every rider has a stage (war.js): the level it rides in, or the jail. Shot by the
+// other team, it moves on to the next level, and from the last one into jail. Only the
+// riders whose stage is this page's level are on screen; the rest fight off screen.
+const STAGE = LEVEL.id === 'jail' ? JAIL : LEVEL_ORDER.indexOf(LEVEL.id);
+const IN_JAIL = STAGE === JAIL;
+const war = new War(rivals.list.map((r) => r.team), swarmCount, swarmFriends);
+war.stage[0] = STAGE; // the page you are on is where you are, picker included
+setCoins(war.coins);
+swarm.idBase = war.swarmBase;
+const weapons = new Weapons(scene);
+if (!IN_JAIL) {
+  swarm.weapons = weapons;
+  rivals.weapons = weapons;
+}
+const penFill = { [FRIEND]: 0, [FOE]: 0 };
+function placeRider(id) {
+  const st = war.stage[id];
+  if (id >= war.swarmBase) {
+    const i = id - war.swarmBase;
+    if (IN_JAIL) {
+      const team = war.team[id];
+      if (st === JAIL) swarm.setState(i, PARKED, penSlot(team, penFill[team]++));
+      else swarm.setState(i, OFF);
+    } else {
+      swarm.setState(i, st === STAGE ? DRIVE : OFF);
+    }
+  } else if (id >= war.rivalBase) {
+    rivals.setActive(id - war.rivalBase, !IN_JAIL && st === STAGE);
+  }
+}
+for (let id = 1; id < war.n; id++) placeRider(id);
+war.onMove((id) => {
+  if (id !== 0) placeRider(id);
+});
+war.save();
+
+const SHIELD = 10000; // coins that absorb one hit
+const PROTECT = 6; // seconds of spawn protection after arriving on a level
+const GUN_COOLDOWN = 0.45;
+let protect = PROTECT;
+let leaving = 0; // counts down to the level change after a hit
+let gunIn = 0;
+const playerTarget = { id: 0, team: FRIEND, x: 0, y: 0, z: 0, gone: false };
+
+function goToStage(stage) {
+  war.coins = coinCount();
+  war.save();
+  switchLevel(stage >= JAIL ? 'jail' : LEVEL_ORDER[stage]);
+}
 const demo = params.has('demo');
 const usePost = !params.has('nopost');
 if (demo) {
@@ -197,6 +253,9 @@ const hud = {
   state: document.getElementById('state'),
   energy: document.getElementById('energy'),
   fps: document.getElementById('fps'),
+  kills: document.getElementById('kills'),
+  caught: document.getElementById('caught'),
+  allies: document.getElementById('allies'),
   coins: document.getElementById('coins'),
   coinCount: document.getElementById('coin-count'),
   alert: document.getElementById('alert'),
@@ -300,6 +359,28 @@ function die(text) {
   }
   player.vel.set(0, 0, 0);
 }
+// Shot by the other team: 10,000 coins take the hit and are gone; without them you
+// move on to the next level, or from the last one into jail.
+let shownWinner = false;
+function playerShot(kind) {
+  if (leaving > 0 || protect > 0 || deadTimer > 0) return;
+  const what = kind === AIR ? '空氣砲' : '機關槍';
+  player.landImpact = 1;
+  if (coinCount() >= SHIELD) {
+    setCoins(0);
+    hud.coins.textContent = formatCoinCount();
+    showAlert(`被${what}擊中！一萬枚硬幣擋下了`, 2.2, 'warn');
+    protect = 2;
+    return;
+  }
+  const to = war.hit(0);
+  hud.burn.classList.remove('flash');
+  void hud.burn.offsetWidth;
+  hud.burn.classList.add('flash');
+  showAlert(to >= JAIL ? `被${what}擊中！關進監牢` : `被${what}擊中！前往第 ${to + 1} 關 ${LEVELS[LEVEL_ORDER[to]].name}`, 2, 'death');
+  leaving = 1.6;
+}
+
 function respawn() {
   player.reset();
   player.yaw = 0.9;
@@ -319,7 +400,8 @@ function frame(timestamp) {
   input.poll();
 
   if (input.hit('KeyC')) chase.cycle();
-  if (input.hit('KeyR') && deadTimer <= 0) {
+  // Backspace (pad Menu) resets; R and T fire.
+  if (input.hit('Backspace') && deadTimer <= 0) {
     player.reset();
     rivals.regroup();
   }
@@ -362,6 +444,61 @@ function frame(timestamp) {
   }
   terrain.updateCoins(time);
 
+  // Weapons: R (or B) fires the air cannon, one ring out at a time; T a burst of four.
+  protect = Math.max(protect - dt, 0);
+  gunIn -= dt;
+  const armed = !dead && !IN_JAIL && leaving <= 0 && war.winner == null;
+  const muzzleY = player.pos.y + 1.2;
+  if (armed && (input.hit('KeyR') || input.hit('KeyB'))) weapons.fire(AIR, 0, FRIEND, player.pos.x, muzzleY, player.pos.z, player.yaw);
+  if (armed && input.hit('KeyT') && gunIn <= 0) {
+    weapons.fire(GUN, 0, FRIEND, player.pos.x, muzzleY, player.pos.z, player.yaw);
+    gunIn = GUN_COOLDOWN;
+  }
+  // N: with a full 10,000 coins, spend them to move on to the next level yourself.
+  if (armed && input.hit('KeyN') && coinCount() >= SHIELD && STAGE < LEVEL_ORDER.length - 1) {
+    setCoins(coinCount() - SHIELD);
+    war.stage[0] = STAGE + 1;
+    showAlert(`前往第 ${STAGE + 2} 關 ${LEVELS[LEVEL_ORDER[STAGE + 1]].name}`, 2, 'warn');
+    leaving = 1.2;
+  }
+  weapons.targets.length = 0;
+  if (armed && protect <= 0) {
+    playerTarget.x = player.pos.x;
+    playerTarget.y = player.pos.y;
+    playerTarget.z = player.pos.z;
+    playerTarget.gone = false;
+    weapons.targets.push(playerTarget);
+  }
+  rivals.targets(weapons.targets);
+  swarm.targets(weapons.targets);
+  weapons.update(dt, camera.position, (t, kind, shooter) => {
+    if (t.id === 0) {
+      playerShot(kind);
+      return;
+    }
+    if (shooter === 0) war.kills++;
+    for (let n = 0; n < 14; n++) {
+      const a = Math.random() * Math.PI * 2;
+      dust.emit(t.x, t.y + 1, t.z, Math.cos(a) * 6, 2 + Math.random() * 5, Math.sin(a) * 6, 1.6 + Math.random() * 1.5, 1 + Math.random());
+    }
+    war.hit(t.id);
+  });
+  war.update(dt, STAGE);
+  if (leaving > 0) {
+    leaving -= dt;
+    if (leaving <= 0) goToStage(war.stage[0]);
+  }
+  if (war.winner != null && !shownWinner) {
+    shownWinner = true;
+    showAlert(`${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝！ 按 Enter 重新開始`, 1e9, war.winner === FRIEND ? 'warn' : 'death');
+  }
+  if (shownWinner && input.hit('Enter')) {
+    war.reset();
+    setCoins(0);
+    if (LEVEL.id === 'desert') location.reload();
+    else switchLevel('desert');
+  }
+
   // bike transform
   bike.root.position.copy(player.pos);
   bike.root.rotation.y = player.yaw;
@@ -378,8 +515,8 @@ function frame(timestamp) {
   dust.update(dt, heightAt);
   shatter?.update(dt);
   finder?.update(dt, time, player, !dead);
-  coinFinder.update(time, player, !dead);
-  teamFinder.update(time, player, !dead);
+  coinFinder.update(time, player, !dead && !IN_JAIL);
+  teamFinder.update(time, player, !dead && !IN_JAIL);
   speedLines.update(dt, player.pos, player.yaw, player.speed);
 
   grass?.update(player.pos, camera.position, time);
@@ -428,6 +565,12 @@ function frame(timestamp) {
     hud.energy.style.transform = `scaleX(${player.energy.toFixed(3)})`;
   }
   if (fpsAcc > 1) {
+    // 擊破: foes you shot; 捕獲: foes in jail; 夥伴: friends still free.
+    const c = war.counts();
+    hud.kills.textContent = war.kills;
+    hud.caught.textContent = c[FOE].jailed;
+    hud.allies.textContent = c[FRIEND].free;
+    hud.coins.textContent = formatCoinCount();
     hud.fps.textContent = `${Math.round(fpsFrames / fpsAcc)} fps · ${chase.modeName}`;
     fpsAcc = 0;
     fpsFrames = 0;
@@ -435,5 +578,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm };
+window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons };
 requestAnimationFrame(frame);

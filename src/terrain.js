@@ -8,6 +8,7 @@ import { buildGrasslandProps } from './grassland.js';
 import { buildSnowProps } from './snow.js';
 import { buildVolcanoProps } from './volcano.js';
 import { buildReefProps } from './reef.js';
+import { buildJailProps } from './jail.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -135,6 +136,7 @@ export const heightAt = {
   snow: snowHeight,
   volcano: volcanoHeight,
   ocean: seabedHeight,
+  jail: (x, z) => (fbm(x * 0.01, z * 0.01, 2) - 0.5) * 0.6, // a flat yard
 }[LEVEL.id];
 
 // Ground shader extras, by level. Lava glows through the terrain material: aLava per
@@ -321,6 +323,7 @@ const buildChunkProps = {
   snow: buildSnowProps,
   volcano: buildVolcanoProps,
   ocean: buildReefProps,
+  jail: buildJailProps,
 }[LEVEL.id];
 const RIPPLE_TILE = LEVEL.ground.ripple ? 9 : 6; // metres per ground texture tile
 

@@ -6,6 +6,7 @@ import { LEVEL } from './levels.js';
 import { lavaAt } from './lava.js';
 import { crash } from './sound.js';
 import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
+import { AIR, GUN } from './weapons.js';
 
 // Animal rivals racing alongside the player on the same hover-bikes. Each one drives a
 // Player of its own through a fake input, so the hover, slopes and colliders are the
@@ -21,6 +22,7 @@ const LINEUP = {
   snow: ['penguin', 'polarBear', 'arcticFox', 'rabbit', 'panda'],
   volcano: ['tiger', 'shiba', 'bear', 'frog', 'fox'],
   ocean: ['penguin', 'otter', 'frog', 'pig', 'shiba'],
+  jail: ['fox', 'shiba', 'rabbit', 'pig', 'tiger'],
 }[LEVEL.id];
 
 const VEINS = [
@@ -74,16 +76,40 @@ export class Rivals {
         skill: 0.85 + Math.random() * 0.25,
         grid: GRID[i],
         team,
+        active: true, // on this level (the war moves riders between levels)
+        fireIn: 2 + Math.random() * 4,
+        tgt: { id: 1 + i, team, x: 0, y: 0, z: 0, gone: false, group: 'rivals', index: i },
       };
     });
+    this.weapons = null; // set by the caller
     this.regroup();
+  }
+
+  setActive(i, on) {
+    const r = this.list[i];
+    r.active = on;
+    r.bike.root.visible = on;
+    if (on) this.respawn(r);
+  }
+
+  // Shot targets for the rivals on this level.
+  targets(out) {
+    for (const r of this.list) {
+      if (!r.active) continue;
+      const t = r.tgt;
+      t.x = r.body.pos.x;
+      t.y = r.body.pos.y;
+      t.z = r.body.pos.z;
+      t.gone = false;
+      out.push(t);
+    }
   }
 
   // The closest rival of a team between min and range from a point: { x, z, d } or null.
   nearest(team, pos, range, min = 0) {
     let best = null;
     for (const r of this.list) {
-      if (r.team !== team) continue;
+      if (r.team !== team || !r.active) continue;
       const d = Math.hypot(r.body.pos.x - pos.x, r.body.pos.z - pos.z);
       if (d < range && d >= min && (!best || d < best.d)) best = { x: r.body.pos.x, z: r.body.pos.z, d };
     }
@@ -180,6 +206,7 @@ export class Rivals {
     const p = this.player;
     const floorAt = (x, z, n) => this.terrain.floorAt(x, z, n);
     for (const r of this.list) {
+      if (!r.active) continue;
       const b = r.body;
       const colliders = this.terrain.collidersNear(b.pos.x, b.pos.z);
       this.drive(r, time, colliders);
@@ -196,11 +223,13 @@ export class Rivals {
       }
       if (b.bump > 10) this.bang(b.bump / 30, b.pos, cameraPos);
       b.bump = 0;
+      this.shoot(r, dt, playerAlive);
     }
 
     this.collide(dt, cameraPos, playerAlive);
 
     for (const r of this.list) {
+      if (!r.active) continue;
       const b = r.body;
       const bike = r.bike;
       bike.root.position.copy(b.pos);
@@ -215,8 +244,27 @@ export class Rivals {
 
   // Bikes are upright cylinders. Overlapping pairs split the overlap and trade the
   // closing speed along the line between them, with a little bounce.
+  // Foes of the player shoot at it when it is ahead and close; everyone fires wild now
+  // and then.
+  shoot(r, dt, playerAlive) {
+    r.fireIn -= dt;
+    if (!this.weapons || r.fireIn > 0) return;
+    r.fireIn = 2 + Math.random() * 4;
+    const b = r.body;
+    const p = this.player;
+    let aim = null;
+    if (playerAlive && r.team !== FRIEND) {
+      const bearing = Math.atan2(p.pos.x - b.pos.x, p.pos.z - b.pos.z);
+      const off = wrap(bearing - b.yaw);
+      if (Math.hypot(p.pos.x - b.pos.x, p.pos.z - b.pos.z) < 70 && Math.abs(off) < 0.4) aim = bearing;
+    }
+    if (aim == null && Math.random() > 0.4) return;
+    const kind = Math.random() < 0.4 ? AIR : GUN;
+    this.weapons.fire(kind, r.tgt.id, r.team, b.pos.x, b.pos.y + 1.2, b.pos.z, (aim ?? b.yaw) + (Math.random() - 0.5) * 0.6);
+  }
+
   collide(dt, cameraPos, playerAlive) {
-    const bodies = this.list.map((r) => r.body);
+    const bodies = this.list.filter((r) => r.active).map((r) => r.body);
     if (playerAlive) bodies.push(this.player);
     for (const [k, t] of this.cooldown) {
       if (t - dt <= 0) this.cooldown.delete(k);

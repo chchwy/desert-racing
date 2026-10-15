@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { heightAt } from './terrain.js';
 import { SPECIES } from './riders/animals.js';
 import { crash } from './sound.js';
+import { AIR, GUN } from './weapons.js';
 import { flagParts, FLAG_MOUNT, TEAM_COLOR, FRIEND, FOE } from './teams.js';
 
 // A swarm of hover-bikes ridden by animals, hundreds to thousands of them, around the
@@ -23,6 +24,21 @@ const TURN = 1.8; // rad/s
 const HIT_R = 2.8; // player-to-bike contact distance
 const NEAR = 140; // within this of the camera, ground height every frame
 const SLICES = 6; // farther bikes refresh their ground height one slice per frame
+
+// Rider states: not on this level, driving, or parked in a jail pen.
+export const OFF = 0;
+export const DRIVE = 1;
+export const PARKED = 2;
+
+// Firing: every few seconds a rider shoots. Foes of the player shoot at it when it is
+// ahead and in range; otherwise a share of riders fire straight ahead at whatever.
+const FIRE_MIN = 4;
+const FIRE_SPAN = 8;
+const AIM_RANGE = 70;
+const AIM_CONE = 0.4;
+const AIM_ERROR = 0.45;
+const WILD = 0.15;
+const AIM_CHANCE = 0.25; // a foe that has the player in its sights takes the shot this often
 
 const ORBIT = 0;
 const ROAM = 1;
@@ -113,6 +129,12 @@ export class Swarm {
     this.coin = new Array(n).fill(null);
     this.team = new Uint8Array(n);
     for (let i = 0; i < n; i++) this.team[i] = i < friends ? FRIEND : FOE;
+    this.state = new Uint8Array(n).fill(DRIVE);
+    this.fireIn = new Float32Array(n);
+    for (let i = 0; i < n; i++) this.fireIn[i] = 1 + Math.random() * FIRE_SPAN;
+    this.weapons = null; // set by the caller
+    this.idBase = 0; // war id of rider 0
+    this.tgt = Array.from({ length: n }, (_, i) => ({ id: 0, team: 0, x: 0, y: 0, z: 0, gone: false, group: 'swarm', index: i }));
     this.slice = 0;
     this.hitCooldown = 0;
 
@@ -174,13 +196,58 @@ export class Swarm {
     }
   }
 
-  // The closest bike of a team between min and range from a point: { x, z, d } or null.
+  setState(i, state, park = null) {
+    this.state[i] = state;
+    const k = i * 16;
+    const arr = this.mesh.instanceMatrix.array;
+    if (state === DRIVE) this.spawn(i, false);
+    if (state === OFF) {
+      arr.fill(0, k, k + 16);
+    } else if (state === PARKED && park) {
+      this.x[i] = park.x;
+      this.z[i] = park.z;
+      this.y[i] = heightAt(park.x, park.z) + HOVER;
+      this.yaw[i] = park.yaw;
+      this.writeMatrix(i, 0);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  writeMatrix(i, lean) {
+    const arr = this.mesh.instanceMatrix.array;
+    const s = Math.sin(this.yaw[i]);
+    const c = Math.cos(this.yaw[i]);
+    const cl = Math.cos(lean);
+    const sl = Math.sin(lean);
+    const k = i * 16;
+    arr[k] = c * cl; arr[k + 1] = sl; arr[k + 2] = -s * cl; arr[k + 3] = 0;
+    arr[k + 4] = -c * sl; arr[k + 5] = cl; arr[k + 6] = s * sl; arr[k + 7] = 0;
+    arr[k + 8] = s; arr[k + 9] = 0; arr[k + 10] = c; arr[k + 11] = 0;
+    arr[k + 12] = this.x[i]; arr[k + 13] = this.y[i]; arr[k + 14] = this.z[i]; arr[k + 15] = 1;
+  }
+
+  // Shot targets for the driving riders, reused objects.
+  targets(out) {
+    for (let i = 0; i < this.n; i++) {
+      if (this.state[i] !== DRIVE) continue;
+      const t = this.tgt[i];
+      t.id = this.idBase + i;
+      t.team = this.team[i];
+      t.x = this.x[i];
+      t.y = this.y[i];
+      t.z = this.z[i];
+      t.gone = false;
+      out.push(t);
+    }
+  }
+
+  // The closest driving bike of a team between min and range from a point: { x, z, d } or null.
   nearest(team, pos, range, min = 0) {
     let bi = -1;
     let bd2 = range * range;
     const min2 = min * min;
     for (let i = 0; i < this.n; i++) {
-      if (this.team[i] !== team) continue;
+      if (this.team[i] !== team || this.state[i] !== DRIVE) continue;
       const dx = this.x[i] - pos.x;
       const dz = this.z[i] - pos.z;
       const d2 = dx * dx + dz * dz;
@@ -195,10 +262,10 @@ export class Swarm {
   update(dt, time, cameraPos, playerAlive) {
     const n = this.n;
     const p = this.player;
-    const arr = this.mesh.instanceMatrix.array;
     this.slice = (this.slice + 1) % SLICES;
     this.hitCooldown -= dt;
     for (let i = 0; i < n; i++) {
+      if (this.state[i] !== DRIVE) continue;
       let x = this.x[i];
       let z = this.z[i];
       const dpx = x - p.pos.x;
@@ -290,15 +357,28 @@ export class Swarm {
       this.x[i] = x;
       this.z[i] = z;
 
+      // Fire: at the player when it is a foe ahead and in range, else now and then wild.
+      this.fireIn[i] -= dt;
+      if (this.weapons && this.fireIn[i] <= 0) {
+        this.fireIn[i] = FIRE_MIN + Math.random() * FIRE_SPAN;
+        let aim = null;
+        if (playerAlive && this.team[i] !== FRIEND && Math.random() < AIM_CHANCE) {
+          const ax = p.pos.x - x;
+          const az = p.pos.z - z;
+          if (ax * ax + az * az < AIM_RANGE * AIM_RANGE) {
+            const bearing = Math.atan2(ax, az);
+            const off = Math.atan2(Math.sin(bearing - this.yaw[i]), Math.cos(bearing - this.yaw[i]));
+            if (Math.abs(off) < AIM_CONE) aim = bearing;
+          }
+        }
+        if (aim != null || Math.random() < WILD) {
+          const kind = Math.random() < 0.4 ? AIR : GUN;
+          this.weapons.fire(kind, this.idBase + i, this.team[i], x, this.y[i] + 1.2, z, (aim ?? this.yaw[i]) + (Math.random() - 0.5) * 2 * AIM_ERROR);
+        }
+      }
+
       // Instance matrix: yaw, then a lean into the turn. Column-major.
-      const lean = THREE.MathUtils.clamp(-this.rate[i] * this.speed[i] * 0.03, -0.6, 0.6);
-      const cl = Math.cos(lean);
-      const sl = Math.sin(lean);
-      const k = i * 16;
-      arr[k] = c * cl; arr[k + 1] = sl; arr[k + 2] = -s * cl; arr[k + 3] = 0;
-      arr[k + 4] = -c * sl; arr[k + 5] = cl; arr[k + 6] = s * sl; arr[k + 7] = 0;
-      arr[k + 8] = s; arr[k + 9] = 0; arr[k + 10] = c; arr[k + 11] = 0;
-      arr[k + 12] = x; arr[k + 13] = this.y[i]; arr[k + 14] = z; arr[k + 15] = 1;
+      this.writeMatrix(i, THREE.MathUtils.clamp(-this.rate[i] * this.speed[i] * 0.03, -0.6, 0.6));
     }
     this.mesh.instanceMatrix.needsUpdate = true;
   }
