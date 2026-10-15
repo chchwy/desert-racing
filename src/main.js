@@ -16,6 +16,7 @@ import { Rivals } from './rivals.js';
 import { crash } from './sound.js';
 import { IceFinder } from './finder.js';
 import { CoinRain } from './coinrain.js';
+import { Swarm } from './swarm.js';
 import { formatCoinCount } from './coins.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -117,6 +118,8 @@ const chase = new ChaseCamera(camera, canvas);
 
 // demo mode (?demo): auto-drive for screenshots / attract mode
 const params = new URLSearchParams(location.search);
+// A swarm of animal bikers around the player: 1000 by default, ?swarm=N for 0..10000.
+const swarm = new Swarm(scene, THREE.MathUtils.clamp(Number(params.get('swarm') ?? 1000) || 0, 0, 10000), player, coinRain);
 const demo = params.has('demo');
 const usePost = !params.has('nopost');
 if (demo) {
@@ -341,6 +344,7 @@ function frame(timestamp) {
   if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
   terrain.update(player.pos);
   const gained = terrain.collectCoins(prevPos, player.pos) + coinRain.update(dt, time, player, !dead);
+  swarm.update(dt, time, camera.position, !dead);
   if (gained) {
     hud.coins.textContent = formatCoinCount();
     hud.coinCount.classList.remove('pop');
@@ -420,5 +424,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain };
+window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm };
 requestAnimationFrame(frame);

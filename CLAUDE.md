@@ -22,11 +22,12 @@ Vite's default is http://localhost:5173. Port 5173 is often another project on t
 URL flags, read in `src/main.js`:
 
 - `?level=rainforest`, `grassland`, `snow`, `volcano` or `ocean`. No flag is the desert.
+- `?swarm=N` sets the swarm size (default 1000, up to 10000).
 - `?demo` holds W and weaves with A/D. Useless for checking a fixed heading.
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
 
-`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
+`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
 
 A ~98 MB reference mp4 sits untracked in the repo root. The game does not load it. Do not commit it.
 
@@ -93,6 +94,7 @@ The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.
 | `src/riders/cat.js` | Cat GLB, seat fit, wind shader |
 | `src/riders/animals.js` | Primitive animal riders for the rivals |
 | `src/rivals.js` | Rival AI racers, bike-to-bike collisions |
+| `src/swarm.js` | Thousands of instanced animal bikers around the player |
 | `src/coinrain.js` | Small coins raining around the big discs |
 | `src/sound.js` | Synthesized crash, finder alarm, coin chime |
 | `src/terrain.js` | `heightAt`, chunk streaming, prop hookup |
@@ -156,6 +158,8 @@ The tail bends as a 5-joint chain (`uTailPivot`), rotated tip-first. It does not
 Every level has five animal rivals on the same hover-bikes (`src/rivals.js`, lineups per level in `LINEUP`). Their riders are primitives from `src/riders/animals.js` (`SPECIES`, `buildAnimalRider`), not GLBs; the cat stays the player's. `Bike` takes `{ rider, veinColor, lights }`: rivals pass their own builder, a vein color, and `lights: false` (ten extra point lights cost every lit material). Each rival drives its own `Player` through a fake input (`pad` plus `hit('Space')`), so hover, slopes and colliders match the player. It aims for a slot ahead or behind and to one side of the player that drifts over time, swerves around colliders, boosts to catch up and hops lava. Past `LOST` (320 m), in lava, on a seabed hazard or 80 m under the player, it respawns 70–110 m behind the player. `regroup` puts them back on the start grid on respawn and on R.
 
 Bikes collide as cylinders (`BIKE_R`, `BIKE_H`) and trade closing speed with some bounce. `src/sound.js` `crash(strength)` synthesizes a loud hit (noise, thump, metal clang through a compressor). It plays for bike-to-bike hits and for hard hits into colliders (`Player.bump`, the closing speed at the push-out), faded with distance from the camera. Audio starts on the first key, click or touch.
+
+The swarm (`src/swarm.js`) is 1,000 more animal bikers by default, `?swarm=N` for 0–10,000. Each is one simplified bike-and-rider geometry (vertex colors; white parts take the instance color as fur) in one `InstancedMesh`, plus a nozzle-glow `InstancedMesh` that shares its `instanceMatrix`. The matrices are written straight into the array (yaw, then lean). They move kinematically over `heightAt` (not `floorAt`, so they pass through pyramids), refreshing the ground every frame within `NEAR` of the camera and one `SLICES`th of the rest per frame. Every 4–12 s each picks a goal: orbit the player, roam, chase the player, or drive to a coin-rain coin and `take` it. Past `FAR` (420 m) one respawns 60–380 m around the player. They ignore props and each other, and bump the player with the crash sound (0.3 s cooldown). 1,000 cost ~0.6 ms a frame, 9,500 ~7 ms.
 
 ## Verify
 
