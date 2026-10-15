@@ -93,7 +93,7 @@ function volcanoHeight(x, z) {
 // ABYSS_DEPTH more, past where the light and the fog reach. The start and the shipwreck
 // sit on calm sand, and no trench crosses them.
 const TRENCH_DEPTH = 100;
-const ABYSS_DEPTH = 360;
+const ABYSS_DEPTH = 200;
 
 function terrace(h, step) {
   const k = h / step;

@@ -73,7 +73,7 @@ const GLOW_TONES = [
 ];
 const DEEP = -35; // metres: below this the trench props take over
 const ABYSS = -150; // the abyss floor is carpeted with them
-const ABYSS_TRIES = 1400; // extra samples per chunk that only keep abyss floor spots
+const ABYSS_TRIES = 600; // extra samples per chunk that only keep abyss floor spots
 const DRY = (LEVEL.sea ?? Infinity) - 3; // nothing grows above this
 const STEEP = 0.7; // rise over run: steeper ground stays bare
 
