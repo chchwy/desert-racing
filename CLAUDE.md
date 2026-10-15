@@ -45,6 +45,8 @@ RT or left-stick up throttles, LT or left-stick down brakes, the left stick and 
 
 Only coins near the bike get a mesh. `coinsInChunk` buckets the trail by chunk, and `coinsNear` binary-searches the forward projection. `Terrain.update` keeps the chunk under a coin while its disc reaches the view (`VIEW_RADIUS` reach plus `COIN_R`). Without that, a coin this size never streams in. Fog far and the camera far plane sit past the rim. Nudge only slides the hub out of a solid.
 
+`CoinFinder` (`src/finder.js`, every level) floats a yellow `Pointer` 20 m ahead and 7.5 m up, above the ice arrow, at the nearest uncollected disc center within 6 km (`nearestCoin`), until it is collected.
+
 Coin rain (`src/coinrain.js`): within `ZONE` (`COIN_R` + 500 m) of any disc center, collected or not, up to 1,500 small coins fall in a 180 m box around the bike, spawned ahead by its velocity, lie on the ground `REST` seconds, and recycle. Density fades over the last `FADE` metres. The bike picks one up within `PICK`; each adds `RAIN_WORTH` (100) through `addCoins` and plays `chime`. `take(coin)` lets others remove one; `active` lists the live ones.
 
 ## Frame
@@ -69,7 +71,7 @@ The snow level uses `snowHeight`: a flat valley within ~250 m of the start, ridg
 
 Ice crystals break. A collider may carry `breakable` (the spire record from `crystalCluster`; the cluster's fat core collider belongs to the main spire). Each frame, before `collidersNear` and the physics substeps, `Terrain.smash(pos, pos + vel·dt)` finds breakable colliders on that path, hides the instance, drops its colliders, and returns the spires; `main.js` then plays `Shatter.burst` (pooled instanced shards, `src/shatter.js`) and a frost cloud through `Dust`, trims the bike's speed and shakes the camera. `Terrain.broken` remembers `chunkKey:id` so a smashed spire stays gone when its chunk streams back in. Only snow props return `breakables`.
 
-`IceFinder` (`src/finder.js`) leads the bike to the nearest unbroken spire within 260 m (`Terrain.nearestBreakable`). It beeps an alarm (`alarm` in `src/sound.js`) faster and higher as the spire gets closer, shows the distance in the reticle tag (搜尋中 when nothing is in range), and floats an arrow 14 m ahead and 5.5 m up. The arrow is a compass card: the outer group takes the bike's yaw, the card tilts back toward the chase camera, and the needle turns by the bearing minus the yaw, so tip up is straight ahead and tip left means steer left.
+`IceFinder` (`src/finder.js`) leads the bike to the nearest unbroken spire within 260 m (`Terrain.nearestBreakable`). It beeps an alarm (`alarm` in `src/sound.js`) faster and higher as the spire gets closer, shows the distance in the reticle tag (搜尋中 when nothing is in range), and floats an arrow 14 m ahead and 5.5 m up. Both finders use `Pointer`, a compass card: the outer group takes the bike's yaw, the card tilts back toward the chase camera, and the needle turns by the bearing minus the yaw, so tip up is straight ahead and tip left means steer left.
 
 The volcano level uses `volcanoHeight`. `src/lava.js` holds `VOLCANO` (a 460 m cone about 1.5 km out, with a crater) and `lavaAt` (0..1: warped plain channels, streams down the flanks, the crater lake); the height field carves the lava 4 m down. With `LEVEL.lava`, chunks and the backdrop carry an `aLava` vertex attribute and `patchGround` adds animated emissive past the bloom threshold, driven by `groundUniforms.uTime`. `lava.js` exists so `terrain.js` and `volcano.js` do not import each other. `buildVolcanoProps` places basalt column stands, ember rocks and charred trees only where `lavaAt` is dry, and the lava pool at the landmark spot returns `props.vent`. `main.js` hangs a `Plume` (`src/plume.js`) over the crater and the pool. The volcano also uses the backdrop and two `Weather` sets (rising embers, falling ash). `LEVEL.sky.cloud` tints the clouds.
 
@@ -105,7 +107,7 @@ The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.
 | `src/snow.js` | Snowy pines, capped boulders, ice crystals |
 | `src/weather.js` | Snow, ash and ember particles around the camera |
 | `src/shatter.js` | Ice shards when a crystal is smashed |
-| `src/finder.js` | Ice-crystal alarm and pointing arrow |
+| `src/finder.js` | Pointing arrows: ice crystals (with alarm), big coins |
 | `src/lava.js` | Volcano cone position and `lavaAt` |
 | `src/volcano.js` | Basalt columns, ember rocks, dead trees, lava pool |
 | `src/plume.js` | Smoke columns over the crater and the pool |

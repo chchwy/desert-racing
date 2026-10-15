@@ -129,6 +129,21 @@ export function coinsNear(x, z, reach) {
   return out;
 }
 
+// The closest disc center within reach that has not been collected, or null.
+export function nearestCoin(x, z, reach) {
+  let best = null;
+  let bestD2 = Infinity;
+  for (const spot of coinsNear(x, z, reach)) {
+    if (collected.has('path:' + spot.i)) continue;
+    const d2 = (spot.x - x) ** 2 + (spot.z - z) ** 2;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = spot;
+    }
+  }
+  return best;
+}
+
 function nearestHub(colliders, x, z) {
   let best = null;
   for (const c of colliders) {

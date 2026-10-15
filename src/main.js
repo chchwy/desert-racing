@@ -14,7 +14,7 @@ import { swellUniforms } from './reef.js';
 import { Sea } from './sea.js';
 import { Rivals } from './rivals.js';
 import { crash } from './sound.js';
-import { IceFinder } from './finder.js';
+import { IceFinder, CoinFinder } from './finder.js';
 import { CoinRain } from './coinrain.js';
 import { Swarm } from './swarm.js';
 import { formatCoinCount } from './coins.js';
@@ -80,6 +80,8 @@ const weather = (LEVEL.weather ?? []).map((w) => new Weather(scene, w));
 const shatter = LEVEL.id === 'snow' ? new Shatter(scene, ice) : null;
 // Snow: an alarm and an arrow lead the bike to the nearest unbroken ice crystal.
 const finder = LEVEL.id === 'snow' ? new IceFinder(scene, terrain, document.querySelector('.reticle .tag')) : null;
+// Every level: a yellow arrow to the nearest big coin until it is collected.
+const coinFinder = new CoinFinder(scene);
 
 // Seabed: schools of fish around the bike, and the water surface overhead.
 const fish = LEVEL.id === 'ocean' ? new FishSchools(scene) : null;
@@ -369,6 +371,7 @@ function frame(timestamp) {
   dust.update(dt, heightAt);
   shatter?.update(dt);
   finder?.update(dt, time, player, !dead);
+  coinFinder.update(time, player, !dead);
   speedLines.update(dt, player.pos, player.yaw, player.speed);
 
   grass?.update(player.pos, camera.position, time);
