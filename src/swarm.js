@@ -12,7 +12,7 @@ import { flagParts, FLAG_MOUNT, TEAM_COLOR, FRIEND, FOE } from './teams.js';
 // Goals: circle the player, roam at random, chase the player, or go pick up a coin
 // from the coin rain. Bikes that stray past FAR respawn around the player. They do not
 // hit props or each other; they do bump the player, with the crash sound.
-// FRIEND_SHARE of them are on the player's team: red flags, and they keep closer, circling
+// `friends` of them are on the player's team: red flags, and they keep closer, circling
 // the player more often. The rest fly blue. A third InstancedMesh draws the flags.
 
 const FAR = 420; // metres from the player before a bike respawns
@@ -23,7 +23,6 @@ const TURN = 1.8; // rad/s
 const HIT_R = 2.8; // player-to-bike contact distance
 const NEAR = 140; // within this of the camera, ground height every frame
 const SLICES = 6; // farther bikes refresh their ground height one slice per frame
-const FRIEND_SHARE = 0.3;
 
 const ORBIT = 0;
 const ROAM = 1;
@@ -93,7 +92,7 @@ function flagGeometry() {
 }
 
 export class Swarm {
-  constructor(scene, count, player, coinRain) {
+  constructor(scene, count, player, coinRain, friends = Math.floor(count / 2)) {
     this.n = count;
     this.player = player;
     this.coinRain = coinRain;
@@ -113,7 +112,7 @@ export class Swarm {
     this.orbitA = new Float32Array(n);
     this.coin = new Array(n).fill(null);
     this.team = new Uint8Array(n);
-    for (let i = 0; i < n; i++) this.team[i] = Math.random() < FRIEND_SHARE ? FRIEND : FOE;
+    for (let i = 0; i < n; i++) this.team[i] = i < friends ? FRIEND : FOE;
     this.slice = 0;
     this.hitCooldown = 0;
 

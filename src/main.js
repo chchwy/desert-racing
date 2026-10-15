@@ -121,8 +121,12 @@ const chase = new ChaseCamera(camera, canvas);
 
 // demo mode (?demo): auto-drive for screenshots / attract mode
 const params = new URLSearchParams(location.search);
-// A swarm of animal bikers around the player: 1000 by default, ?swarm=N for 0..10000.
-const swarm = new Swarm(scene, THREE.MathUtils.clamp(Number(params.get('swarm') ?? 1000) || 0, 0, 10000), player, coinRain);
+// A swarm of animal bikers around the player: 994 by default, ?swarm=N for 0..10000.
+// The two teams come out even: with the player and the rivals, 994 makes 500 a side.
+const swarmCount = THREE.MathUtils.clamp(Number(params.get('swarm') ?? 994) || 0, 0, 10000);
+const riders = 1 + rivals.list.length + swarmCount;
+const redOutside = 1 + rivals.list.filter((r) => r.team === FRIEND).length;
+const swarm = new Swarm(scene, swarmCount, player, coinRain, THREE.MathUtils.clamp(Math.floor(riders / 2) - redOutside, 0, swarmCount));
 // Red arrow to the nearest friend, black arrow to the nearest foe.
 const teamFinder = new TeamFinder(scene, [swarm, rivals]);
 const demo = params.has('demo');
