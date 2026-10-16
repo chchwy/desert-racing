@@ -18,8 +18,8 @@ export const STAGES = 6;
 export const JAIL = STAGES;
 export const PENALTY = STAGES + 1;
 const PENALTY_BAIL_RATE = 0.003; // ... a penalty rider gets back to the jail
-const KEY = 'desert-racing-war-1';
-const OFFSCREEN_RATE = 0.012; // chance per second per rider, times the foe share on its level
+const KEY = 'desert-racing-war-2'; // bumped to send everyone back to the first level
+const OFFSCREEN_RATE = 0.004; // chance per second per rider, times the foe share on its level: a slow march to the ocean
 
 export class War {
   constructor(rivalTeams, swarmCount, swarmFriends) {
