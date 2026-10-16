@@ -234,9 +234,15 @@ export function buildJailProps(cx, cz, size, heightAt) {
 const COIN_MAX = 4000;
 const COIN_G = 20;
 const PICK = 2.6;
-const BIG_COUNT = 10;
+// Coin kinds: plain, big (twice the size) and huge (three times), with how much each
+// counts toward bail and how many coins it is worth.
+const KINDS = [
+  { scale: 1, count: 1, worth: 100 },
+  { scale: 2, count: 10, worth: 1000 },
+  { scale: 3.2, count: 10, worth: 10000 },
+];
 const SUPER_COUNT = 20;
-const SUPER_WORTH = 10000;
+const SUPER_WORTH = 10000; // default; opts.superWorth overrides
 const coinGeo = new THREE.CylinderGeometry(0.85, 0.85, 0.12, 18);
 const coinMat = new THREE.MeshStandardMaterial({
   color: new THREE.Color().setRGB(1.0, 0.78, 0.25, THREE.SRGBColorSpace),
@@ -255,7 +261,12 @@ export class JailCoins {
     this.lobFrom = opts.lobFrom ?? null;
     this.machines = opts.machines ?? null;
     this.rate = opts.rate ?? 10;
-    this.bigShare = opts.bigShare ?? 0.12;
+    // Share of each kind; bigShare alone means plain and big only.
+    const big = opts.bigShare ?? 0.12;
+    this.mix = opts.mix ?? [1 - big, big, 0];
+    this.pieces = !!opts.pieces; // every coin counts 1 toward bail, whatever its size
+    this.superWorth = opts.superWorth ?? SUPER_WORTH;
+    this.fountain = opts.fountain ?? 0; // machines spray coins out to this radius
     this.superR = opts.superR ?? 12;
     this.superMin = opts.superMin ?? 30;
     this.superSpan = opts.superSpan ?? 15;
@@ -274,7 +285,7 @@ export class JailCoins {
     this.e = new THREE.Euler();
     this.p = new THREE.Vector3();
     this.one = new THREE.Vector3(1, 1, 1);
-    this.two = new THREE.Vector3(2, 2, 2);
+    this.sc = new THREE.Vector3(1, 1, 1);
   }
 
   throwOne(pos) {
@@ -300,9 +311,12 @@ export class JailCoins {
       }
       sx = mc.x;
       sz = mc.z;
-      sy = this.heightAt(sx, sz) + 11;
-      tx = THREE.MathUtils.clamp(mc.x + (Math.random() - 0.5) * 12, b.x0, b.x1);
-      tz = THREE.MathUtils.clamp(mc.z + (Math.random() - 0.5) * 12, b.z0, b.z1);
+      sy = this.heightAt(sx, sz) + (this.fountain ? 15 : 11);
+      const spread = this.fountain || 6;
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * spread;
+      tx = THREE.MathUtils.clamp(mc.x + Math.cos(a) * r, b.x0, b.x1);
+      tz = THREE.MathUtils.clamp(mc.z + Math.sin(a) * r, b.z0, b.z1);
     } else {
       // From outside: a random bearing from the pen center, past the fence.
       const a = Math.random() * Math.PI * 2;
@@ -314,12 +328,26 @@ export class JailCoins {
       tz = b.z0 + Math.random() * (b.z1 - b.z0);
     }
     const ty = this.heightAt(tx, tz) + 0.35;
-    const T = this.machines ? 1 + Math.random() * 0.5 : 2.5 + Math.random() * 1.5;
+    let T = this.machines ? 1 + Math.random() * 0.5 : 2.5 + Math.random() * 1.5;
+    if (this.fountain) {
+      // Sprayed up out of the machine, then down: the flight time that lands it at ty.
+      const up = 10 + Math.random() * 12;
+      T = (up + Math.sqrt(up * up + 2 * COIN_G * (sy - ty))) / COIN_G;
+    }
     this.coins.push({
       x: sx, y: sy, z: sz, vx: (tx - sx) / T, vy: (ty - sy) / T + 0.5 * COIN_G * T, vz: (tz - sz) / T,
       t: 0, T, ty, landed: false, spin: 5 + Math.random() * 8, phase: Math.random() * 10,
-      big: Math.random() < this.bigShare, live: true,
+      kind: this.pickKind(), live: true,
     });
+  }
+
+  pickKind() {
+    let r = Math.random();
+    for (let k = 0; k < this.mix.length; k++) {
+      r -= this.mix[k];
+      if (r < 0) return k;
+    }
+    return this.mix.length - 1;
   }
 
   // A super coin falls almost straight down from high above a spot inside.
@@ -348,7 +376,7 @@ export class JailCoins {
       this.coins[i] = this.coins[this.coins.length - 1];
       this.coins.pop();
     }
-    return c.big ? BIG_COUNT : 1;
+    return this.pieces ? 1 : KINDS[c.kind].count;
   }
 
   // Returns { count, worth }: bail count and coins the bike picked up this frame.
@@ -373,8 +401,8 @@ export class JailCoins {
         this.scene.remove(sc.mesh);
         sc.mesh.geometry.dispose();
         this.supers.splice(i, 1);
-        count += SUPER_COUNT;
-        worth += SUPER_WORTH;
+        count += this.pieces ? 1 : SUPER_COUNT;
+        worth += this.superWorth;
       }
     }
     this.acc += dt * this.rate;
@@ -396,18 +424,20 @@ export class JailCoins {
           c.landed = true;
         }
       }
-      const reach = c.big ? PICK * 1.6 : PICK;
+      const kind = KINDS[c.kind];
+      const reach = PICK * (1 + (kind.scale - 1) * 0.6);
       if (Math.abs(c.x - pos.x) < reach && Math.abs(c.z - pos.z) < reach && Math.abs(c.y - pos.y) < reach + 1) {
         c.live = false;
         this.coins[i] = this.coins[this.coins.length - 1];
         this.coins.pop();
-        count += c.big ? BIG_COUNT : 1;
-        worth += c.big ? 1000 : 100;
+        count += this.pieces ? 1 : kind.count;
+        worth += kind.worth;
         continue;
       }
       this.e.set(c.landed ? Math.PI / 2 + 0.15 : time * 1.3 + c.phase, c.landed ? c.phase : time * c.spin, 0);
       this.q.setFromEuler(this.e);
-      this.mesh.setMatrixAt(n++, this.m.compose(this.p.set(c.x, c.landed && c.big ? c.y + 0.1 : c.y, c.z), this.q, c.big ? this.two : this.one));
+      this.sc.setScalar(kind.scale);
+      this.mesh.setMatrixAt(n++, this.m.compose(this.p.set(c.x, c.landed ? c.y + (kind.scale - 1) * 0.06 : c.y, c.z), this.q, this.sc));
     }
     this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;

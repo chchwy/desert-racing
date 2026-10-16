@@ -1,14 +1,13 @@
 import * as THREE from 'three';
 
-// The penalty jail, for riders caught speeding again while already in debt: a big glass
-// block of ROOMS x ROOMS rooms, one rider to a room (the player in room 0, around the
+// The penalty jail (the coin jail), for riders caught speeding again while already in
+// debt: a huge glass block of ROOMS x ROOMS rooms, one rider to a room (the player in room 0, around the
 // origin). Every inner wall is two glass panels with a brown door between them; ramming
 // a panel or a door breaks it like an ice crystal (Terrain.smash, with glass shards),
-// and the two rooms open into one. A machine hangs over every room and keeps dropping
-// coins. Through the glass you can see the riders next door before you get to them.
+// and the two rooms open into one. A coin fountain over every room sprays big coins. Through the glass you can see the riders next door before you get to them.
 
-export const ROOMS = 8;
-export const ROOM = 56; // metres, wall to wall
+export const ROOMS = 12;
+export const ROOM = 90; // metres, wall to wall
 const WALL_H = 8;
 const POST_STEP = 1.6;
 const DOOR_W = 7;
@@ -59,6 +58,7 @@ export const glassMat = new THREE.MeshStandardMaterial({
 const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a9298, metalness: 0.7, roughness: 0.35 });
 const doorMat = new THREE.MeshStandardMaterial({ color: 0x7a4a26, roughness: 0.7, metalness: 0.15 });
 const machineMat = new THREE.MeshStandardMaterial({ color: 0x40444c, metalness: 0.6, roughness: 0.4, emissive: 0x302008 });
+const machineGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.5, 0.3) });
 const box = new THREE.BoxGeometry(1, 1, 1);
 
 const inChunk = (x, z, x0, z0, size) => x >= x0 && x < x0 + size && z >= z0 && z < z0 + size;
@@ -128,15 +128,23 @@ export function buildPenaltyProps(cx, cz, size, heightAt) {
       colliders.push({ x: fx, z: fz, r: 0.6, top: heightAt(fx, fz) + WALL_H });
     }
   }
+  // A super coin fountain over each room: a heavy box on legs with a glowing gold
+  // nozzle on top that sprays the coins up and out.
   for (const mc of MACHINES) {
     if (!inChunk(mc.x, mc.z, x0, z0, size)) continue;
     const gy = heightAt(mc.x, mc.z);
     const body = new THREE.Mesh(box, machineMat);
-    body.scale.set(4, 2.2, 4);
+    body.scale.set(7, 3, 7);
     body.position.set(mc.x, gy + 12.5, mc.z);
-    const chute = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.9, 1.4, 12), machineMat);
-    chute.position.set(mc.x, gy + 10.8, mc.z);
-    group.add(body, chute);
+    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 2.2, 2.2, 16), machineGlow);
+    nozzle.position.set(mc.x, gy + 15, mc.z);
+    group.add(body, nozzle);
+    for (const [lx, lz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) {
+      const leg = new THREE.Mesh(box, machineMat);
+      leg.scale.set(0.5, 11, 0.5);
+      leg.position.set(mc.x + lx, gy + 5.5, mc.z + lz);
+      group.add(leg);
+    }
   }
   return { group, colliders, slopes: [], breakables };
 }

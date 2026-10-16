@@ -190,7 +190,7 @@ const SHIELD = 10000; // coins that absorb one hit
 // get out: from the jail back to the first level, from the penalty jail back to the
 // jail. Locked up, over JAIL_TOP is speeding: a speeder pays FINE coins, and one who
 // does not have them pays anyway and goes into debt (the coin count can go negative).
-const BAIL = 30;
+const BAIL = IN_PENALTY ? 300 : 30; // coins picked up; the coin jail rains so hard it takes more
 const JAIL_TOP = 90 / 3.6; // 90 km/h: the limit
 const FINE = 300000;
 const FINE_GAP = 5; // seconds between two fines
@@ -225,7 +225,12 @@ if (IN_JAIL) {
   swarm.extraCoins = [blueCoins]; // updated with nobody to pick them but the swarm
 } else if (IN_PENALTY) {
   // Busy machines: big coins and 10,000-coin super coins are common.
-  jailCoins = new JailCoins(scene, heightAt, { bounds: BUILDING, machines: MACHINES, rate: 40, bigShare: 0.35, superR: 4, superMin: 4, superSpan: 4 });
+  // The coin jail: fountains spray big coins only (worth 1,000 or 10,000), and a
+  // 100,000 super coin drops every few seconds. Every coin counts 1 toward bail.
+  jailCoins = new JailCoins(scene, heightAt, {
+    bounds: BUILDING, machines: MACHINES, fountain: 38, rate: 70, mix: [0, 0.7, 0.3], pieces: true,
+    superR: 5, superMin: 3, superSpan: 3, superWorth: 100000,
+  });
   swarm.coinSources = [{ box: BUILDING, src: jailCoins }];
 }
 const route = IN_JAIL ? new RouteOverlay(scene, heightAt) : null;
