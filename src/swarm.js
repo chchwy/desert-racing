@@ -75,7 +75,6 @@ function bikeGeometry() {
     parts.push(part(geo, color));
   };
   add(new THREE.CapsuleGeometry(0.5, 2.0, 4, 10), hull, [0, 0.55, 0.1], [Math.PI / 2, 0, 0], [0.85, 1, 0.7]);
-  add(new THREE.ConeGeometry(0.16, 1.8, 6), hull, [0, 0.55, 1.9], [Math.PI / 2, 0, 0]);
   for (const sx of [-1, 1]) {
     add(new THREE.CylinderGeometry(0.62, 0.55, 1.7, 12), hull, [sx * 1.15, 0.7, -0.3], [Math.PI / 2, 0, 0]);
     add(new THREE.BoxGeometry(0.6, 0.18, 0.5), hull, [sx * 0.7, 0.62, -0.3]);

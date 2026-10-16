@@ -230,20 +230,6 @@ export class Bike {
     // seat spine
     mesh(new THREE.BoxGeometry(0.34, 0.12, 1.2), trimMat, body, { p: [0, 0.92, -0.35] });
 
-    // front claws
-    const claw = new THREE.ConeGeometry(0.13, 2.2, 8);
-    claw.rotateX(Math.PI / 2);
-    for (const [x, y, ry, rx, s] of [
-      [0, 0.55, 0, 0.05, 1.25],
-      [0.32, 0.4, 0.22, 0.12, 1],
-      [-0.32, 0.4, -0.22, 0.12, 1],
-      [0.55, 0.7, 0.4, -0.15, 0.8],
-      [-0.55, 0.7, -0.4, -0.15, 0.8],
-      [0.22, 0.85, 0.12, -0.25, 0.7],
-      [-0.22, 0.85, -0.12, -0.25, 0.7],
-    ]) {
-      mesh(claw, hullMat, body, { p: [x, y, 1.9], r: [rx, ry, 0], s: [1, 1, s] });
-    }
     // under-hull legs / skids
     for (const sx of [-1, 1]) {
       mesh(capsule(0.12, 0.8), hullMat, body, { p: [sx * 0.35, 0.05, 0.8], r: [0.6, 0, sx * 0.3] });
