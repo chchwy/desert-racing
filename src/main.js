@@ -400,8 +400,14 @@ function frame(timestamp) {
   input.poll();
 
   if (input.hit('KeyC')) chase.cycle();
-  // Backspace (pad Menu) resets; R and T fire.
-  if (input.hit('Backspace') && deadTimer <= 0) {
+  // Backspace (pad Menu) resets, or starts a new war once one is won; R and T fire.
+  // L3 / R3 step through the level picker.
+  if (input.hit('PadLevelBack') || input.hit('PadLevelForward')) {
+    const step = input.hit('PadLevelBack') ? -1 : 1;
+    const at = Math.max(LEVEL_ORDER.indexOf(LEVEL.id), 0);
+    switchLevel(LEVEL_ORDER[(at + step + LEVEL_ORDER.length) % LEVEL_ORDER.length]);
+  }
+  if (input.hit('Backspace') && deadTimer <= 0 && !shownWinner) {
     player.reset();
     rivals.regroup();
   }
@@ -490,9 +496,9 @@ function frame(timestamp) {
   }
   if (war.winner != null && !shownWinner) {
     shownWinner = true;
-    showAlert(`${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝！ 按 Enter 重新開始`, 1e9, war.winner === FRIEND ? 'warn' : 'death');
+    showAlert(`${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝！ 按 Enter（手把 Menu）重新開始`, 1e9, war.winner === FRIEND ? 'warn' : 'death');
   }
-  if (shownWinner && input.hit('Enter')) {
+  if (shownWinner && (input.hit('Enter') || input.hit('Backspace'))) {
     war.reset();
     setCoins(0);
     if (LEVEL.id === 'desert') location.reload();

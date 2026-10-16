@@ -28,12 +28,26 @@ const PAD_IDLE = {
   lookY: 0,
 };
 
+// Pad buttons and the key each one presses. Every keyboard action has a button:
+// A jump, Y camera, Menu reset, B air cannon, RB machine gun, View next level for
+// 10,000 coins, L3 / R3 the level picker back / forward.
+const PAD_KEYS = [
+  ['jump', 'Space'],
+  ['camera', 'KeyC'],
+  ['reset', 'Backspace'],
+  ['fireAir', 'KeyR'],
+  ['fireGun', 'KeyT'],
+  ['advance', 'KeyN'],
+  ['prevLevel', 'PadLevelBack'],
+  ['nextLevel', 'PadLevelForward'],
+];
+
 export class Input {
   constructor() {
     this.keys = new Set();
     this.pressed = new Set();
     this.pad = { ...PAD_IDLE };
-    this._padHeld = { jump: false, camera: false, reset: false, fireAir: false, fireGun: false };
+    this._padHeld = {};
     addEventListener('keydown', (e) => {
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
@@ -66,18 +80,11 @@ export class Input {
     this.pad.boost = snap.boost;
     this.pad.lookX = snap.lookX;
     this.pad.lookY = snap.lookY;
-    if (snap.jump && !this._padHeld.jump) this.pressed.add('Space');
-    if (snap.camera && !this._padHeld.camera) this.pressed.add('KeyC');
-    // Pad buttons press the same keys: Menu resets (Backspace), B fires the air cannon (R),
-    // RB the machine gun (T).
-    if (snap.reset && !this._padHeld.reset) this.pressed.add('Backspace');
-    if (snap.fireAir && !this._padHeld.fireAir) this.pressed.add('KeyR');
-    if (snap.fireGun && !this._padHeld.fireGun) this.pressed.add('KeyT');
-    this._padHeld.jump = snap.jump;
-    this._padHeld.camera = snap.camera;
-    this._padHeld.reset = snap.reset;
-    this._padHeld.fireAir = snap.fireAir;
-    this._padHeld.fireGun = snap.fireGun;
+    // Pad buttons press the same keys as the keyboard, once per press.
+    for (const [button, code] of PAD_KEYS) {
+      if (snap[button] && !this._padHeld[button]) this.pressed.add(code);
+      this._padHeld[button] = snap[button];
+    }
   }
   endFrame() {
     this.pressed.clear();

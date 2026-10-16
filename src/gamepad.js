@@ -41,6 +41,9 @@ const IDLE = {
   reset: false,
   fireAir: false,
   fireGun: false,
+  advance: false,
+  prevLevel: false,
+  nextLevel: false,
   lookX: 0,
   lookY: 0,
 };
@@ -62,6 +65,9 @@ export function readGamepad(pad) {
     reset: buttonDown(pad, 9),
     fireAir: buttonDown(pad, 1), // B: air cannon
     fireGun: buttonDown(pad, 5), // RB: machine gun
+    advance: buttonDown(pad, 8), // View: spend 10,000 coins on the next level
+    prevLevel: buttonDown(pad, 10), // L3: level picker back
+    nextLevel: buttonDown(pad, 11), // R3: level picker forward
     lookX: rx,
     lookY: ry,
   };
