@@ -188,11 +188,12 @@ const SHIELD = 10000; // coins that absorb one hit
 // In jail, coins are thrown into the pens from outside and pile up where they land; in
 // the penalty jail they drop from a machine over every room. Pick up BAIL of them to
 // get out: from the jail back to the first level, from the penalty jail back to the
-// jail. Locked up, over JAIL_TOP is speeding: a speeder pays FINE coins, and one who
-// does not have them pays anyway and goes into debt (the coin count can go negative).
+// jail. Locked up, over JAIL_TOP is speeding: a speeder pays FINE coins (into debt if it
+// does not have them; the count can go negative), and a speeder in the jail goes to the
+// huge coin jail.
 const BAIL = IN_PENALTY ? 300 : 30; // coins picked up; the coin jail rains so hard it takes more
 const JAIL_TOP = 90 / 3.6; // 90 km/h: the limit
-const FINE = 300000;
+const FINE = 10000;
 const FINE_GAP = 5; // seconds between two fines
 let fineIn = 0;
 // The secret route out of the pen: with SEE_ROUTE coins a rider sees it and the hidden
@@ -551,23 +552,24 @@ function frame(timestamp) {
     }
     for (const c of swarm.extraCoins ?? []) c.update(dt, time, FAR_AWAY);
   }
-  // Locked up, over 90 km/h is speeding: pay 300,000, into debt if need be.
+  // Locked up, over 90 km/h is speeding: 10,000 off (into debt if need be), and from
+  // the jail straight into the coin jail.
   // Locked up, over 90 km/h is speeding, unless another bike just shoved you there.
   fineIn -= dt;
   player.shoved = Math.max((player.shoved ?? 0) - dt, 0);
   const over = LOCKED && player.speed > JAIL_TOP && player.shoved <= 0;
   if (over && !dead && leaving <= 0 && bailing <= 0 && war.winner == null && fineIn <= 0) {
     fineIn = FINE_GAP;
-    if (IN_JAIL && coinCount() < 0) {
-      // Speeding again while already in debt: off to the glass penalty jail.
+    // The fine comes off either way, into debt if need be; in the jail, speeding also
+    // sends you to the huge coin jail.
+    setCoins(coinCount() - FINE);
+    gained++;
+    if (IN_JAIL) {
       war.send(0, PENALTY);
-      showAlert('欠款還超速！關進玻璃罰錢牢', 2, 'death');
+      showAlert(`超速！罰 ${formatCoinCount(FINE)} 枚，關進超大監牢`, 2, 'death');
       leaving = 1.6;
     } else {
-      const short = coinCount() < FINE;
-      setCoins(coinCount() - FINE);
-      gained++;
-      showAlert(short ? `超速！罰 ${formatCoinCount(FINE)} 枚，欠款 ${formatCoinCount(-coinCount())} 枚` : `超速！罰 ${formatCoinCount(FINE)} 枚`, 2, short ? 'death' : 'warn');
+      showAlert(`超速！罰 ${formatCoinCount(FINE)} 枚`, 2, 'warn');
     }
   }
   if (route && war.winner == null) {
@@ -644,7 +646,7 @@ function frame(timestamp) {
   });
   war.update(dt, STAGE);
   if (LOCKED && war.winner == null && bailing <= 0 && leaving <= 0) {
-    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 超過 90 罰 30 萬`;
+    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 超過 90 進超大監牢`;
     if (bailPicked >= BAIL) {
       war.send(0, IN_JAIL ? 0 : JAIL);
       showAlert(IN_JAIL ? `撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始` : `撿到 ${BAIL} 枚硬幣！回到監牢`, 2, 'warn');

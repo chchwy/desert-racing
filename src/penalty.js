@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 
-// The penalty jail (the coin jail), for riders caught speeding again while already in
-// debt: a huge glass block of ROOMS x ROOMS rooms, one rider to a room (the player in room 0, around the
+// The penalty jail (the coin jail), for riders caught speeding in the jail: a huge glass block of ROOMS x ROOMS rooms, one rider to a room (the player in room 0, around the
 // origin). Every inner wall is two glass panels with a brown door between them; ramming
 // a panel or a door breaks it like an ice crystal (Terrain.smash, with glass shards),
 // and the two rooms open into one. A coin fountain over every room sprays big coins. Through the glass you can see the riders next door before you get to them.
