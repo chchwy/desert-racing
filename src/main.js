@@ -192,6 +192,7 @@ const BAIL = 30;
 const JAIL_TOP = 30 / 3.6; // 30 km/h
 const SPEED_LIMIT = 40 / 3.6; // 40 km/h, and the fine
 const FINE = 400000;
+const FINE_GAP = 5; // seconds between two fines
 let fineIn = 0;
 // The secret route out of the pen: seen with SEE_ROUTE coins, walkable without. Its big
 // coins are worth ROUTE_COIN each, and reaching its finish ends the war on the spot.
@@ -523,7 +524,7 @@ function frame(timestamp) {
     player.vel.z *= k;
   }
   if (over && !dead && leaving <= 0 && bailing <= 0 && war.winner == null && fineIn <= 0) {
-    fineIn = 2;
+    fineIn = FINE_GAP;
     if (coinCount() >= FINE) {
       setCoins(coinCount() - FINE);
       gained++;
