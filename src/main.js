@@ -15,13 +15,13 @@ import { Sea } from './sea.js';
 import { Rivals } from './rivals.js';
 import { crash, chime } from './sound.js';
 import { IceFinder, CoinFinder, TeamFinder } from './finder.js';
-import { CoinRain, RAIN_WORTH } from './coinrain.js';
+import { CoinRain } from './coinrain.js';
 import { Swarm } from './swarm.js';
 import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
 import { formatCoinCount, coinCount, setCoins, addCoins } from './coins.js';
 import { War, JAIL } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
-import { penSlot, JailCoins } from './jail.js';
+import { penSlot, JailCoins, RouteOverlay, inPen } from './jail.js';
 import { OFF, DRIVE, PARKED } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -177,11 +177,19 @@ const SHIELD = 10000; // coins that absorb one hit
 // up BAIL of them to get out and start again from the first level. The bike crawls in
 // there: JAIL_SPEED at most.
 const BAIL = 30;
-const JAIL_SPEED = 10 / 3.6; // 10 km/h
+const JAIL_SPEED = 10 / 3.6; // 10 km/h in the pen
+const ROUTE_SPEED = 25 / 3.6; // on the secret route
+// The secret route out of the pen: seen with SEE_ROUTE coins, walkable without. Its big
+// coins are worth ROUTE_COIN each, and reaching its finish ends the war on the spot.
+const SEE_ROUTE = 400000;
+const ROUTE_COIN = 10000;
+let finishNote = '';
+let restartIn = 0;
 let bailing = 0;
 let bailPicked = 0;
 const reticleTag = document.querySelector('.reticle .tag');
 const jailCoins = IN_JAIL ? new JailCoins(scene, FRIEND, heightAt) : null;
+const route = IN_JAIL ? new RouteOverlay(scene, heightAt) : null;
 if (IN_JAIL) {
   player.speedCap = JAIL_SPEED;
   coinRain.mesh.visible = false;
@@ -457,11 +465,28 @@ function frame(timestamp) {
   if (!IN_JAIL) gained += coinRain.update(dt, time, player, !dead);
   if (jailCoins) {
     const got = jailCoins.update(dt, time, player.pos);
-    if (got) {
-      addCoins(got * RAIN_WORTH);
-      bailPicked += got;
+    if (got.count) {
+      addCoins(got.worth);
+      bailPicked += got.count;
       chime();
-      gained += got;
+      gained += got.count;
+    }
+    player.speedCap = inPen(FRIEND, player.pos.x, player.pos.z) ? JAIL_SPEED : ROUTE_SPEED;
+  }
+  if (route && war.winner == null) {
+    const r = route.update(time, player.pos, coinCount() >= SEE_ROUTE);
+    if (r.coins) {
+      addCoins(r.coins * ROUTE_COIN);
+      chime();
+      gained += r.coins;
+    }
+    if (r.finished) {
+      // The finish settles the war: the team with more riders still free wins.
+      const c = war.counts();
+      war.winner = c[FRIEND].free >= c[FOE].free ? FRIEND : FOE;
+      war.save();
+      finishNote = '抵達終點！';
+      restartIn = 6;
     }
   }
   swarm.update(dt, time, camera.position, !dead);
@@ -531,9 +556,11 @@ function frame(timestamp) {
   }
   if (war.winner != null && !shownWinner) {
     shownWinner = true;
-    showAlert(`${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝！ 按 Enter（手把 Menu）重新開始`, 1e9, war.winner === FRIEND ? 'warn' : 'death');
+    const lose = war.winner === FRIEND ? '藍隊' : '紅隊';
+    showAlert(`${finishNote}${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝，${lose}輸了！ 按 Enter（手把 Menu）重新開始`, 1e9, war.winner === FRIEND ? 'warn' : 'death');
   }
-  if (shownWinner && (input.hit('Enter') || input.hit('Backspace'))) {
+  if (restartIn > 0) restartIn -= dt;
+  if (shownWinner && (input.hit('Enter') || input.hit('Backspace') || (finishNote && restartIn <= 0))) {
     war.reset();
     setCoins(0);
     if (LEVEL.id === 'desert') location.reload();
@@ -619,5 +646,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons };
+window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins };
 requestAnimationFrame(frame);
