@@ -108,6 +108,7 @@ export class Player {
     this.landImpact = 0;
     this.jumpTimer = 0; // hover field is off briefly after a jump
     this.bump = 0; // hardest hit into a solid since the caller last cleared it (m/s)
+    this.speedCap = Infinity; // ground speed limit (m/s); the jail sets one
     this.reset();
   }
 
@@ -162,6 +163,11 @@ export class Player {
       const s = Math.max(0, speed - dragA * dt) / speed;
       this.vel.x *= s;
       this.vel.z *= s;
+    }
+    const ground = Math.hypot(this.vel.x, this.vel.z);
+    if (ground > this.speedCap) {
+      this.vel.x *= this.speedCap / ground;
+      this.vel.z *= this.speedCap / ground;
     }
 
     // lateral grip: hover bikes slide, so this is fairly loose

@@ -13,15 +13,15 @@ import { FishSchools } from './fish.js';
 import { swellUniforms } from './reef.js';
 import { Sea } from './sea.js';
 import { Rivals } from './rivals.js';
-import { crash } from './sound.js';
+import { crash, chime } from './sound.js';
 import { IceFinder, CoinFinder, TeamFinder } from './finder.js';
-import { CoinRain } from './coinrain.js';
+import { CoinRain, RAIN_WORTH } from './coinrain.js';
 import { Swarm } from './swarm.js';
 import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
-import { formatCoinCount, coinCount, setCoins } from './coins.js';
+import { formatCoinCount, coinCount, setCoins, addCoins } from './coins.js';
 import { War, JAIL } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
-import { penSlot, penBounds } from './jail.js';
+import { penSlot, JailCoins } from './jail.js';
 import { OFF, DRIVE, PARKED } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -173,16 +173,18 @@ war.onMove((id) => {
 war.save();
 
 const SHIELD = 10000; // coins that absorb one hit
-// In jail the rain falls inside the player's pen, always full, each coin worth 100 times
-// as much; BAIL coins buy the way out, back to the first level.
-const BAIL = 30000000;
-const JAIL_WORTH = 100;
+// In jail, coins are thrown into the pen from outside and pile up where they land. Pick
+// up BAIL of them to get out and start again from the first level. The bike crawls in
+// there: JAIL_SPEED at most.
+const BAIL = 30;
+const JAIL_SPEED = 10 / 3.6; // 10 km/h
 let bailing = 0;
+let bailPicked = 0;
 const reticleTag = document.querySelector('.reticle .tag');
+const jailCoins = IN_JAIL ? new JailCoins(scene, FRIEND, heightAt) : null;
 if (IN_JAIL) {
-  coinRain.bounds = penBounds(FRIEND, 4);
-  coinRain.full = true;
-  coinRain.worth = JAIL_WORTH;
+  player.speedCap = JAIL_SPEED;
+  coinRain.mesh.visible = false;
 }
 const PROTECT = 6; // seconds of spawn protection after arriving on a level
 const GUN_COOLDOWN = 0.45;
@@ -451,7 +453,17 @@ function frame(timestamp) {
   if (!dead && inLava()) die('墜入熔岩');
   if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
   terrain.update(player.pos);
-  const gained = terrain.collectCoins(prevPos, player.pos) + coinRain.update(dt, time, player, !dead);
+  let gained = terrain.collectCoins(prevPos, player.pos);
+  if (!IN_JAIL) gained += coinRain.update(dt, time, player, !dead);
+  if (jailCoins) {
+    const got = jailCoins.update(dt, time, player.pos);
+    if (got) {
+      addCoins(got * RAIN_WORTH);
+      bailPicked += got;
+      chime();
+      gained += got;
+    }
+  }
   swarm.update(dt, time, camera.position, !dead);
   if (gained) {
     hud.coins.textContent = formatCoinCount();
@@ -502,11 +514,10 @@ function frame(timestamp) {
   });
   war.update(dt, STAGE);
   if (IN_JAIL && war.winner == null && bailing <= 0) {
-    reticleTag.textContent = `出獄 ${formatCoinCount()} / ${formatCoinCount(BAIL)}`;
-    if (coinCount() >= BAIL) {
-      setCoins(coinCount() - BAIL);
+    reticleTag.textContent = `出獄 ${Math.min(bailPicked, BAIL)} / ${BAIL}`;
+    if (bailPicked >= BAIL) {
       war.release(0);
-      showAlert('三千萬枚硬幣！出獄', 2, 'warn');
+      showAlert(`撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始`, 2, 'warn');
       bailing = 1.6;
     }
   }
