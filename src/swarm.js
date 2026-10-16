@@ -15,6 +15,11 @@ import { flagParts, FLAG_MOUNT, TEAM_COLOR, FRIEND, FOE } from './teams.js';
 // hit props or each other; they do bump the player, with the crash sound.
 // `friends` of them are on the player's team: red flags, and they keep closer, circling
 // the player more often. The rest fly blue. A third InstancedMesh draws the flags.
+//
+// Locked up (the jail, the penalty jail), a rider gets a box: a pen or a room it stays
+// inside. Boxed riders keep under `speedCap`, roam and pick up the coins that land in
+// their box (`coinSources`), and fire like everyone else. Thirty coins and `onBail(i)`
+// fires; now and then one speeds anyway and `onSpeed(i)` fires.
 
 const FAR = 420; // metres from the player before a bike respawns
 const SPAWN_MIN = 60;
@@ -135,6 +140,12 @@ export class Swarm {
     this.weapons = null; // set by the caller
     this.idBase = 0; // war id of rider 0
     this.tgt = Array.from({ length: n }, (_, i) => ({ id: 0, team: 0, x: 0, y: 0, z: 0, gone: false, group: 'swarm', index: i }));
+    this.box = new Array(n).fill(null); // { x0, x1, z0, z1 } for a locked-up rider
+    this.bail = new Uint8Array(n); // coins picked up toward bail
+    this.speedCap = Infinity;
+    this.coinSources = []; // [{ box, src }]: src has `coins` (live list) and take(coin)
+    this.onBail = null;
+    this.onSpeed = null;
     this.slice = 0;
     this.hitCooldown = 0;
 
@@ -177,7 +188,47 @@ export class Swarm {
     this.pick(i);
   }
 
+  // The coin source whose box holds rider i, if any.
+  sourceFor(i) {
+    for (const cs of this.coinSources) {
+      const b = cs.box;
+      if (this.x[i] >= b.x0 && this.x[i] <= b.x1 && this.z[i] >= b.z0 && this.z[i] <= b.z1) return cs.src;
+    }
+    return null;
+  }
+
+  // Lock rider i in a box, placed at a random spot inside it.
+  confine(i, box) {
+    this.box[i] = box;
+    this.bail[i] = 0;
+    this.x[i] = box.x0 + Math.random() * (box.x1 - box.x0);
+    this.z[i] = box.z0 + Math.random() * (box.z1 - box.z0);
+    this.ground[i] = heightAt(this.x[i], this.z[i]);
+    this.y[i] = this.ground[i] + HOVER;
+    this.pick(i);
+  }
+
   pick(i) {
+    if (this.box[i]) {
+      // Locked up: wander the box, or go for a coin that landed in it.
+      this.timer[i] = 3 + Math.random() * 5;
+      this.mode[i] = ROAM;
+      this.coin[i] = null;
+      const src = this.sourceFor(i);
+      const b = this.box[i];
+      if (src && src.coins.length && Math.random() < 0.7) {
+        // A few random tries for a coin inside this rider's own box.
+        for (let k = 0; k < 12; k++) {
+          const c = src.coins[Math.floor(Math.random() * src.coins.length)];
+          if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) {
+            this.coin[i] = c;
+            this.mode[i] = COIN;
+            break;
+          }
+        }
+      }
+      return;
+    }
     const friend = this.team[i] === FRIEND;
     const roll = Math.random();
     // Friends mostly ride with the player; foes roam, chase and grab coins more.
@@ -270,7 +321,8 @@ export class Swarm {
       let z = this.z[i];
       const dpx = x - p.pos.x;
       const dpz = z - p.pos.z;
-      if (dpx * dpx + dpz * dpz > FAR * FAR) {
+      const box = this.box[i];
+      if (!box && dpx * dpx + dpz * dpz > FAR * FAR) {
         this.spawn(i, false);
         x = this.x[i];
         z = this.z[i];
@@ -302,7 +354,18 @@ export class Swarm {
           const cz = c.z - z;
           want = Math.atan2(cx, cz);
           if (cx * cx + cz * cz < 2.5 * 2.5 && Math.abs(c.y - this.y[i]) < 4) {
-            this.coinRain.take(c, false);
+            if (box) {
+              const src = this.sourceFor(i);
+              const got = src ? src.take(c) : 0;
+              this.bail[i] = Math.min(255, this.bail[i] + got);
+              if (this.bail[i] >= 30 && this.onBail) {
+                this.pick(i);
+                this.onBail(i);
+                continue;
+              }
+            } else {
+              this.coinRain.take(c, false);
+            }
             this.pick(i);
           }
         }
@@ -313,10 +376,24 @@ export class Swarm {
       this.rate[i] += (rate - this.rate[i]) * Math.min(1, dt * 5);
       this.yaw[i] += this.rate[i] * dt;
       this.speed[i] += (speed - this.speed[i]) * Math.min(1, dt * 0.8);
+      if (box) this.speed[i] = Math.min(this.speed[i], this.speedCap * 0.85);
       const s = Math.sin(this.yaw[i]);
       const c = Math.cos(this.yaw[i]);
       x += s * this.speed[i] * dt;
       z += c * this.speed[i] * dt;
+      if (box) {
+        // Walls: stay in the box, turning back toward its middle at an edge.
+        if (x < box.x0 || x > box.x1 || z < box.z0 || z > box.z1) {
+          x = THREE.MathUtils.clamp(x, box.x0, box.x1);
+          z = THREE.MathUtils.clamp(z, box.z0, box.z1);
+          this.yaw[i] = Math.atan2((box.x0 + box.x1) / 2 - x, (box.z0 + box.z1) / 2 - z);
+        }
+        // Rules are the same for everyone: now and then a locked-up rider speeds.
+        if (this.onSpeed && Math.random() < dt * 0.0005) {
+          this.onSpeed(i);
+          continue;
+        }
+      }
 
       // Hover: ground every frame near the camera, a slice at a time farther out.
       const dcx = x - cameraPos.x;

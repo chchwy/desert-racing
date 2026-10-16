@@ -19,10 +19,11 @@ import { CoinRain } from './coinrain.js';
 import { Swarm } from './swarm.js';
 import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
 import { formatCoinCount, coinCount, setCoins, addCoins } from './coins.js';
-import { War, JAIL } from './war.js';
+import { War, JAIL, PENALTY } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
-import { penSlot, JailCoins, RouteOverlay, inPen } from './jail.js';
-import { OFF, DRIVE, PARKED } from './swarm.js';
+import { penBounds, PENS, JailCoins, RouteOverlay } from './jail.js';
+import { RoomZones, BUILDING, MACHINES, ROOMS } from './penalty.js';
+import { OFF, DRIVE } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
@@ -136,34 +137,42 @@ const swarm = new Swarm(scene, swarmCount, player, coinRain, swarmFriends);
 const teamFinder = new TeamFinder(scene, [swarm, rivals]);
 
 // ------------------------------------------------------------------- war ----
-// Every rider has a stage (war.js): the level it rides in, or the jail. Shot by the
-// other team, it moves on to the next level, and from the last one into jail. Only the
-// riders whose stage is this page's level are on screen; the rest fight off screen.
-const STAGE = LEVEL.id === 'jail' ? JAIL : LEVEL_ORDER.indexOf(LEVEL.id);
+// Every rider has a stage (war.js): the level it rides in, the jail, or the penalty
+// jail. Shot by the other team, it moves on to the next level, and from the last one
+// into jail. Only the riders whose stage is this page's level are on screen; the rest
+// play on off screen. Everyone keeps the same rules, locked up or not.
+const STAGE = LEVEL.id === 'jail' ? JAIL : LEVEL.id === 'penalty' ? PENALTY : LEVEL_ORDER.indexOf(LEVEL.id);
 const IN_JAIL = STAGE === JAIL;
+const IN_PENALTY = STAGE === PENALTY;
+const LOCKED = IN_JAIL || IN_PENALTY;
 const war = new War(rivals.list.map((r) => r.team), swarmCount, swarmFriends);
 war.stage[0] = STAGE; // the page you are on is where you are, picker included
 setCoins(war.coins);
 swarm.idBase = war.swarmBase;
 const weapons = new Weapons(scene);
-if (!IN_JAIL) {
-  swarm.weapons = weapons;
-  rivals.weapons = weapons;
+swarm.weapons = weapons;
+rivals.weapons = weapons;
+
+// Locked up, riders are boxed: their team's pen in the jail, a room of their own in the
+// penalty jail (the player's is room 0). Broken doors join rooms (zones).
+const zones = IN_PENALTY ? new RoomZones() : null;
+const roomOf = (id) => 1 + (id * 7919) % (ROOMS * ROOMS - 1);
+function boxFor(id) {
+  if (IN_JAIL) return penBounds(war.team[id], 3);
+  return zones.box(roomOf(id));
 }
-const penFill = { [FRIEND]: 0, [FOE]: 0 };
 function placeRider(id) {
   const st = war.stage[id];
   if (id >= war.swarmBase) {
     const i = id - war.swarmBase;
-    if (IN_JAIL) {
-      const team = war.team[id];
-      if (st === JAIL) swarm.setState(i, PARKED, penSlot(team, penFill[team]++));
-      else swarm.setState(i, OFF);
+    if (st !== STAGE) {
+      swarm.setState(i, OFF);
     } else {
-      swarm.setState(i, st === STAGE ? DRIVE : OFF);
+      swarm.setState(i, DRIVE);
+      if (LOCKED) swarm.confine(i, boxFor(id));
     }
   } else if (id >= war.rivalBase) {
-    rivals.setActive(id - war.rivalBase, !IN_JAIL && st === STAGE);
+    rivals.setActive(id - war.rivalBase, !LOCKED && st === STAGE);
   }
 }
 for (let id = 1; id < war.n; id++) placeRider(id);
@@ -173,12 +182,15 @@ war.onMove((id) => {
 war.save();
 
 const SHIELD = 10000; // coins that absorb one hit
-// In jail, coins are thrown into the pen from outside and pile up where they land. Pick
-// up BAIL of them to get out and start again from the first level. The bike crawls in
-// there: JAIL_SPEED at most.
+// In jail, coins are thrown into the pens from outside and pile up where they land; in
+// the penalty jail they drop from a machine over every room. Pick up BAIL of them to
+// get out: from the jail back to the first level, from the penalty jail back to the
+// jail. Locked up, nobody may go over SPEED_LIMIT: a speeder pays FINE coins, or, short
+// of them, lands in the penalty jail.
 const BAIL = 30;
-const JAIL_SPEED = 10 / 3.6; // 10 km/h in the pen
-const ROUTE_SPEED = 25 / 3.6; // on the secret route
+const SPEED_LIMIT = 20 / 3.6; // 20 km/h
+const FINE = 10000;
+let fineIn = 0;
 // The secret route out of the pen: seen with SEE_ROUTE coins, walkable without. Its big
 // coins are worth ROUTE_COIN each, and reaching its finish ends the war on the spot.
 const SEE_ROUTE = 400000;
@@ -188,11 +200,25 @@ let restartIn = 0;
 let bailing = 0;
 let bailPicked = 0;
 const reticleTag = document.querySelector('.reticle .tag');
-const jailCoins = IN_JAIL ? new JailCoins(scene, FRIEND, heightAt) : null;
-const route = IN_JAIL ? new RouteOverlay(scene, heightAt) : null;
+let jailCoins = null;
 if (IN_JAIL) {
-  player.speedCap = JAIL_SPEED;
+  jailCoins = new JailCoins(scene, heightAt, { bounds: penBounds(FRIEND, 4), lobFrom: PENS[FRIEND] });
+  const blueCoins = new JailCoins(scene, heightAt, { bounds: penBounds(FOE, 4), lobFrom: PENS[FOE] });
+  swarm.coinSources = [{ box: penBounds(FRIEND, 0), src: jailCoins }, { box: penBounds(FOE, 0), src: blueCoins }];
+  swarm.extraCoins = [blueCoins]; // updated with nobody to pick them but the swarm
+} else if (IN_PENALTY) {
+  // Busy machines: big coins and 10,000-coin super coins are common.
+  jailCoins = new JailCoins(scene, heightAt, { bounds: BUILDING, machines: MACHINES, rate: 18, bigShare: 0.3, superR: 3.5, superMin: 6, superSpan: 6 });
+  swarm.coinSources = [{ box: BUILDING, src: jailCoins }];
+}
+const route = IN_JAIL ? new RouteOverlay(scene, heightAt) : null;
+if (LOCKED) {
   coinRain.mesh.visible = false;
+  swarm.speedCap = SPEED_LIMIT;
+  // Same rules for the swarm: thirty coins buy their way out, and a speeder in the jail
+  // goes to the penalty jail.
+  swarm.onBail = (i) => war.send(war.swarmBase + i, IN_JAIL ? 0 : JAIL);
+  swarm.onSpeed = IN_JAIL ? (i) => war.send(war.swarmBase + i, PENALTY) : null;
 }
 const PROTECT = 6; // seconds of spawn protection after arriving on a level
 const GUN_COOLDOWN = 0.45;
@@ -200,11 +226,12 @@ let protect = PROTECT;
 let leaving = 0; // counts down to the level change after a hit
 let gunIn = 0;
 const playerTarget = { id: 0, team: FRIEND, x: 0, y: 0, z: 0, gone: false };
+const FAR_AWAY = new THREE.Vector3(1e6, 0, 1e6); // nobody near enough to pick up
 
 function goToStage(stage) {
   war.coins = coinCount();
   war.save();
-  switchLevel(stage >= JAIL ? 'jail' : LEVEL_ORDER[stage]);
+  switchLevel(stage === PENALTY ? 'penalty' : stage === JAIL ? 'jail' : LEVEL_ORDER[stage]);
 }
 const demo = params.has('demo');
 const usePost = !params.has('nopost');
@@ -387,6 +414,7 @@ function playerShot(kind) {
   if (leaving > 0 || protect > 0 || deadTimer > 0) return;
   const what = kind === AIR ? '空氣砲' : '機關槍';
   player.landImpact = 1;
+  if (LOCKED) return; // locked up already: a shot only shakes you
   if (coinCount() >= SHIELD) {
     setCoins(0);
     hud.coins.textContent = formatCoinCount();
@@ -445,6 +473,15 @@ function frame(timestamp) {
   for (const spire of terrain.smash(player.pos, smashAhead)) {
     shatter?.burst(spire, player.vel);
     frostBurst(spire);
+    if (spire.door && zones) {
+      zones.join(spire.door.rooms[0], spire.door.rooms[1]);
+      crash(0.9);
+      for (let i = 0; i < swarm.n; i++) {
+        if (swarm.state[i] !== DRIVE) continue;
+        const room = roomOf(war.swarmBase + i);
+        if (zones.find(room) === zones.find(spire.door.rooms[0])) swarm.box[i] = zones.box(room);
+      }
+    }
     player.vel.multiplyScalar(0.88);
     player.landImpact = Math.max(player.landImpact, 0.8);
   }
@@ -462,7 +499,7 @@ function frame(timestamp) {
   if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
   terrain.update(player.pos);
   let gained = terrain.collectCoins(prevPos, player.pos);
-  if (!IN_JAIL) gained += coinRain.update(dt, time, player, !dead);
+  if (!LOCKED) gained += coinRain.update(dt, time, player, !dead);
   if (jailCoins) {
     const got = jailCoins.update(dt, time, player.pos);
     if (got.count) {
@@ -471,7 +508,30 @@ function frame(timestamp) {
       chime();
       gained += got.count;
     }
-    player.speedCap = inPen(FRIEND, player.pos.x, player.pos.z) ? JAIL_SPEED : ROUTE_SPEED;
+    for (const c of swarm.extraCoins ?? []) c.update(dt, time, FAR_AWAY);
+  }
+  // Locked up, over 20 km/h is speeding: pay 10,000, or go to the penalty jail.
+  // Nobody gets past the limit: the bike is held at it, and pushing past it is speeding.
+  fineIn -= dt;
+  const over = LOCKED && player.speed > SPEED_LIMIT;
+  if (over) {
+    const k = SPEED_LIMIT / player.speed;
+    player.vel.x *= k;
+    player.vel.z *= k;
+  }
+  if (over && !dead && leaving <= 0 && bailing <= 0 && war.winner == null && fineIn <= 0) {
+    fineIn = 2;
+    if (coinCount() >= FINE) {
+      setCoins(coinCount() - FINE);
+      gained++;
+      showAlert(`超速！罰 ${formatCoinCount(FINE)} 枚`, 1.8, 'warn');
+    } else if (IN_JAIL) {
+      war.send(0, PENALTY);
+      showAlert('超速又付不出罰金！關進罰錢牢', 2, 'death');
+      leaving = 1.6;
+    } else {
+      showAlert('超速！付不出罰金', 1.5, 'death');
+    }
   }
   if (route && war.winner == null) {
     const r = route.update(time, player.pos, coinCount() >= SEE_ROUTE);
@@ -501,7 +561,7 @@ function frame(timestamp) {
   // Weapons: R (or B) fires the air cannon, one ring out at a time; T a burst of four.
   protect = Math.max(protect - dt, 0);
   gunIn -= dt;
-  const armed = !dead && !IN_JAIL && leaving <= 0 && war.winner == null;
+  const armed = !dead && leaving <= 0 && war.winner == null;
   const muzzleY = player.pos.y + 1.2;
   if (armed && (input.hit('KeyR') || input.hit('KeyB'))) weapons.fire(AIR, 0, FRIEND, player.pos.x, muzzleY, player.pos.z, player.yaw);
   if (armed && input.hit('KeyT') && gunIn <= 0) {
@@ -509,7 +569,7 @@ function frame(timestamp) {
     gunIn = GUN_COOLDOWN;
   }
   // N: with a full 10,000 coins, spend them to move on to the next level yourself.
-  if (armed && input.hit('KeyN') && coinCount() >= SHIELD && STAGE < LEVEL_ORDER.length - 1) {
+  if (armed && !LOCKED && input.hit('KeyN') && coinCount() >= SHIELD && STAGE < LEVEL_ORDER.length - 1) {
     setCoins(coinCount() - SHIELD);
     war.stage[0] = STAGE + 1;
     showAlert(`前往第 ${STAGE + 2} 關 ${LEVELS[LEVEL_ORDER[STAGE + 1]].name}`, 2, 'warn');
@@ -535,20 +595,20 @@ function frame(timestamp) {
       const a = Math.random() * Math.PI * 2;
       dust.emit(t.x, t.y + 1, t.z, Math.cos(a) * 6, 2 + Math.random() * 5, Math.sin(a) * 6, 1.6 + Math.random() * 1.5, 1 + Math.random());
     }
-    war.hit(t.id);
+    if (!LOCKED) war.hit(t.id); // locked up, a hit only knocks the dust off
   });
   war.update(dt, STAGE);
-  if (IN_JAIL && war.winner == null && bailing <= 0) {
-    reticleTag.textContent = `出獄 ${Math.min(bailPicked, BAIL)} / ${BAIL}`;
+  if (LOCKED && war.winner == null && bailing <= 0 && leaving <= 0) {
+    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 限速 20`;
     if (bailPicked >= BAIL) {
-      war.release(0);
-      showAlert(`撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始`, 2, 'warn');
+      war.send(0, IN_JAIL ? 0 : JAIL);
+      showAlert(IN_JAIL ? `撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始` : `撿到 ${BAIL} 枚硬幣！回到監牢`, 2, 'warn');
       bailing = 1.6;
     }
   }
   if (bailing > 0) {
     bailing -= dt;
-    if (bailing <= 0) goToStage(0);
+    if (bailing <= 0) goToStage(war.stage[0]);
   }
   if (leaving > 0) {
     leaving -= dt;
@@ -583,7 +643,7 @@ function frame(timestamp) {
   dust.update(dt, heightAt);
   shatter?.update(dt);
   finder?.update(dt, time, player, !dead);
-  coinFinder.update(time, player, !dead && !IN_JAIL);
+  coinFinder.update(time, player, !dead && !LOCKED);
   teamFinder.update(time, player, !dead && !IN_JAIL);
   speedLines.update(dt, player.pos, player.yaw, player.speed);
 

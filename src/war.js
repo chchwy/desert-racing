@@ -1,19 +1,26 @@
 import { FRIEND, FOE } from './teams.js';
 
 // The team war across the levels. Every rider (the player, the rivals, the swarm) has a
-// stage: 0..5 is the level it rides in (LEVEL_ORDER), JAIL is the jail. A rider shot by
-// the other team moves to the next stage; shot on the last level, it goes to jail. The
-// team that has all its riders in jail first loses.
+// stage: 0..5 is the level it rides in (LEVEL_ORDER), JAIL is the jail, PENALTY the
+// penalty jail for those caught speeding in jail without the fine. A rider shot by the
+// other team moves to the next stage; shot on the last level, it goes to jail. The team
+// that has all its riders locked up (jail or penalty jail) first loses.
 //
-// Only the riders on the player's level are on screen. The rest fight it out here:
-// each second, every off-screen rider may be shot by the other team on its level, at a
-// rate that grows with how many foes share that level.
+// Only the riders on the player's level are on screen. The rest play it out here, about
+// once a second: free riders may be shot by the other team on their level, at a rate
+// that grows with how many foes share it; jailed riders sometimes pick up their 30 coins
+// and walk free, or speed and land in the penalty jail; penalty riders sometimes buy
+// their way back to the jail.
 //
 // The state lives in localStorage, so it survives the reload a level change needs.
 // Rider ids: 0 = player, 1..RIVALS = rivals, then the swarm.
 
 export const STAGES = 6;
 export const JAIL = STAGES;
+export const PENALTY = STAGES + 1;
+const BAIL_RATE = 0.002; // off-screen chance per second a jailed rider gets out
+const SPEED_RATE = 0.0008; // ... a jailed rider speeds into the penalty jail
+const PENALTY_BAIL_RATE = 0.003; // ... a penalty rider gets back to the jail
 const KEY = 'desert-racing-war-1';
 const OFFSCREEN_RATE = 0.012; // chance per second per rider, times the foe share on its level
 
@@ -88,11 +95,18 @@ export class War {
     return to;
   }
 
-  // Out of jail and back to the first level (the player buys its way out).
-  release(id) {
+  // Move a rider to any stage: out of jail to the first level, into the penalty jail,
+  // back from it to the jail.
+  send(id, to) {
     const from = this.stage[id];
-    this.stage[id] = 0;
-    for (const fn of this.listeners) fn(id, from, 0);
+    if (from === to) return;
+    this.stage[id] = to;
+    for (const fn of this.listeners) fn(id, from, to);
+    this.checkWinner();
+  }
+
+  release(id) {
+    this.send(id, 0);
   }
 
   // Counts per team: { free, jailed } for FRIEND and FOE.
@@ -127,14 +141,25 @@ export class War {
     const per = Array.from({ length: STAGES }, () => [0, 0]);
     for (let i = 0; i < this.n; i++) if (this.stage[i] < STAGES) per[this.stage[i]][this.team[i]]++;
     const shot = [];
+    const moves = [];
     for (let i = 1; i < this.n; i++) {
       const s = this.stage[i];
-      if (s >= STAGES || s === onScreen) continue;
+      if (s === onScreen) continue;
+      if (s === JAIL) {
+        if (Math.random() < BAIL_RATE) moves.push([i, 0]);
+        else if (Math.random() < SPEED_RATE) moves.push([i, PENALTY]);
+        continue;
+      }
+      if (s === PENALTY) {
+        if (Math.random() < PENALTY_BAIL_RATE) moves.push([i, JAIL]);
+        continue;
+      }
       const [foe, friend] = per[s];
       const total = foe + friend;
       const enemies = this.team[i] === FRIEND ? foe : friend;
       if (enemies && Math.random() < OFFSCREEN_RATE * (enemies / total) * 2) shot.push(i);
     }
     for (const i of shot) this.hit(i);
+    for (const [i, to] of moves) this.send(i, to);
   }
 }

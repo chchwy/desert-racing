@@ -196,6 +196,30 @@ export const LEVELS = {
     },
     dust: { color: srgb(0.7, 0.68, 0.64), shade: srgb(0.55, 0.53, 0.5) },
   },
+  // For riders caught speeding in jail without the fine (war.js). Not in the picker.
+  penalty: {
+    id: 'penalty',
+    name: '罰錢牢',
+    title: 'Penalty Jail — prototype',
+    eyebrow: 'PENALTY JAIL / BATTLE PROTOTYPE',
+    headline: '關進罰錢牢。',
+    sub: '一間一間的牢房 · 撞破門找同伴 · 撿滿 30 枚回監牢',
+    page: '#8f8a84',
+    haze: 0x8f8a84,
+    fogNear: 60,
+    fogFar: 900,
+    sky: { zenith: 0x3c4450, mid: 0x7a808a, cover: 0.6, sun: 0.35 },
+    hemi: { sky: 0xb8bcc4, ground: 0x5a5650, intensity: 0.9 },
+    sun: { color: 0xeee8de, intensity: 1.6 },
+    ground: {
+      base: srgb(0.42, 0.4, 0.37),
+      crest: srgb(0.46, 0.44, 0.41),
+      shade: srgb(0.36, 0.34, 0.32),
+      roughness: 0.95,
+      normalScale: 0.25,
+    },
+    dust: { color: srgb(0.62, 0.6, 0.57), shade: srgb(0.48, 0.46, 0.44) },
+  },
 };
 
 export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow', 'volcano', 'ocean'];

@@ -23,6 +23,7 @@ const LINEUP = {
   volcano: ['tiger', 'shiba', 'bear', 'frog', 'fox'],
   ocean: ['penguin', 'otter', 'frog', 'pig', 'shiba'],
   jail: ['fox', 'shiba', 'rabbit', 'pig', 'tiger'],
+  penalty: ['fox', 'shiba', 'rabbit', 'pig', 'tiger'],
 }[LEVEL.id];
 
 const VEINS = [

@@ -192,22 +192,19 @@ export function buildJailProps(cx, cz, size, heightAt) {
   return { group, colliders, slopes: [] };
 }
 
-// Coins thrown into a pen from outside the fence. Each one is lobbed on a long arc from
-// somewhere 25-60 m outside the bars to a spot inside, and once it lands it stays, so
-// the pen fills up over time. The bike picks one up within PICK. Some are big (twice
-// the size, counting 10), and now and then a super coin, a standing disc like the
-// big ones outside, drops in from high up (counting SUPER_COUNT).
+// Coins that pile up in a locked-up space. In the jail they are lobbed on long arcs from
+// 25-60 m outside the fence (`lobFrom`, the pen center); in the penalty jail they drop
+// from machines over each room (`machines`). Once a coin lands it stays until someone
+// picks it up, so the space fills over time. Some are big (twice the size, counting
+// BIG_COUNT toward bail), and now and then a super coin, a standing disc like the big
+// ones outside, falls in from high up (counting SUPER_COUNT). The bike picks one up
+// within PICK; boxed swarm riders take them with take(). `coins` is the live list.
 const COIN_MAX = 4000;
-const COIN_RATE = 10; // per second
-const BIG_SHARE = 0.12;
-const BIG_COUNT = 10;
-const SUPER_R = 12;
-const SUPER_COUNT = 20;
-const SUPER_WORTH = 10000;
-const SUPER_MIN = 30; // seconds between super coins
-const SUPER_SPAN = 15;
 const COIN_G = 20;
 const PICK = 2.6;
+const BIG_COUNT = 10;
+const SUPER_COUNT = 20;
+const SUPER_WORTH = 10000;
 const coinGeo = new THREE.CylinderGeometry(0.85, 0.85, 0.12, 18);
 const coinMat = new THREE.MeshStandardMaterial({
   color: new THREE.Color().setRGB(1.0, 0.78, 0.25, THREE.SRGBColorSpace),
@@ -218,10 +215,18 @@ const coinMat = new THREE.MeshStandardMaterial({
 });
 
 export class JailCoins {
-  constructor(scene, team, heightAt) {
-    this.team = team;
+  // opts: { bounds, lobFrom } or { bounds, machines }, plus rate (coins/s), bigShare,
+  // superR, superMin and superSpan (seconds between super coins).
+  constructor(scene, heightAt, opts) {
     this.heightAt = heightAt;
-    this.inside = penBounds(team, 4);
+    this.inside = opts.bounds;
+    this.lobFrom = opts.lobFrom ?? null;
+    this.machines = opts.machines ?? null;
+    this.rate = opts.rate ?? 10;
+    this.bigShare = opts.bigShare ?? 0.12;
+    this.superR = opts.superR ?? 12;
+    this.superMin = opts.superMin ?? 30;
+    this.superSpan = opts.superSpan ?? 15;
     this.mesh = new THREE.InstancedMesh(coinGeo, coinMat, COIN_MAX);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
@@ -232,46 +237,75 @@ export class JailCoins {
     this.supers = [];
     this.superIn = 8;
     this.scene = scene;
-    this.two = new THREE.Vector3(2, 2, 2);
     this.m = new THREE.Matrix4();
     this.q = new THREE.Quaternion();
     this.e = new THREE.Euler();
     this.p = new THREE.Vector3();
     this.one = new THREE.Vector3(1, 1, 1);
+    this.two = new THREE.Vector3(2, 2, 2);
   }
 
   throwOne() {
-    const pen = PENS[this.team];
     const b = this.inside;
-    // From outside: a random bearing from the pen center, past the fence.
-    const a = Math.random() * Math.PI * 2;
-    const reach = Math.max(HALF_X, HALF_Z) + 25 + Math.random() * 35;
-    const sx = pen.x + Math.cos(a) * reach;
-    const sz = pen.z + Math.sin(a) * reach;
-    const sy = this.heightAt(sx, sz) + 2;
-    const tx = b.x0 + Math.random() * (b.x1 - b.x0);
-    const tz = b.z0 + Math.random() * (b.z1 - b.z0);
+    let sx;
+    let sz;
+    let sy;
+    let tx;
+    let tz;
+    if (this.machines) {
+      // Out of a machine overhead, landing a few metres around under it.
+      const mc = this.machines[Math.floor(Math.random() * this.machines.length)];
+      sx = mc.x;
+      sz = mc.z;
+      sy = this.heightAt(sx, sz) + 11;
+      tx = THREE.MathUtils.clamp(mc.x + (Math.random() - 0.5) * 12, b.x0, b.x1);
+      tz = THREE.MathUtils.clamp(mc.z + (Math.random() - 0.5) * 12, b.z0, b.z1);
+    } else {
+      // From outside: a random bearing from the pen center, past the fence.
+      const a = Math.random() * Math.PI * 2;
+      const reach = Math.max(b.x1 - b.x0, b.z1 - b.z0) / 2 + 25 + Math.random() * 35;
+      sx = this.lobFrom.x + Math.cos(a) * reach;
+      sz = this.lobFrom.z + Math.sin(a) * reach;
+      sy = this.heightAt(sx, sz) + 2;
+      tx = b.x0 + Math.random() * (b.x1 - b.x0);
+      tz = b.z0 + Math.random() * (b.z1 - b.z0);
+    }
     const ty = this.heightAt(tx, tz) + 0.35;
-    const T = 2.5 + Math.random() * 1.5;
+    const T = this.machines ? 1 + Math.random() * 0.5 : 2.5 + Math.random() * 1.5;
     this.coins.push({
       x: sx, y: sy, z: sz, vx: (tx - sx) / T, vy: (ty - sy) / T + 0.5 * COIN_G * T, vz: (tz - sz) / T,
       t: 0, T, ty, landed: false, spin: 5 + Math.random() * 8, phase: Math.random() * 10,
-      big: Math.random() < BIG_SHARE,
+      big: Math.random() < this.bigShare, live: true,
     });
   }
 
-  // A super coin falls almost straight down from high above a spot in the pen.
+  // A super coin falls almost straight down from high above a spot inside.
   dropSuper() {
     const b = this.inside;
-    const x = b.x0 + SUPER_R + Math.random() * (b.x1 - b.x0 - SUPER_R * 2);
-    const z = b.z0 + SUPER_R + Math.random() * (b.z1 - b.z0 - SUPER_R * 2);
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(SUPER_R, SUPER_R, 1.4, 48), coinMat);
+    const r = this.superR;
+    const span = (lo, hi) => (hi - lo > r * 2 ? lo + r + Math.random() * (hi - lo - r * 2) : (lo + hi) / 2);
+    const x = span(b.x0, b.x1);
+    const z = span(b.z0, b.z1);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, Math.max(0.4, r * 0.12), 48), coinMat);
     mesh.rotation.order = 'YXZ';
     mesh.rotation.x = Math.PI / 2; // standing, like the discs outside
-    const rest = this.heightAt(x, z) + SUPER_R + 0.2;
-    mesh.position.set(x, rest + 160, z);
+    const rest = this.heightAt(x, z) + r + 0.2;
+    const top = this.machines ? 11 : 160;
+    mesh.position.set(x, rest + top, z);
     this.scene.add(mesh);
-    this.supers.push({ x, z, y: rest + 160, vy: 0, rest, mesh });
+    this.supers.push({ x, z, y: rest + top, vy: 0, rest, mesh, r });
+  }
+
+  // Someone else picked coin c up: returns its bail count.
+  take(c) {
+    if (!c.live) return 0;
+    c.live = false;
+    const i = this.coins.indexOf(c);
+    if (i >= 0) {
+      this.coins[i] = this.coins[this.coins.length - 1];
+      this.coins.pop();
+    }
+    return c.big ? BIG_COUNT : 1;
   }
 
   // Returns { count, worth }: bail count and coins the bike picked up this frame.
@@ -281,7 +315,7 @@ export class JailCoins {
     this.superIn -= dt;
     if (this.superIn <= 0) {
       this.dropSuper();
-      this.superIn = SUPER_MIN + Math.random() * SUPER_SPAN;
+      this.superIn = this.superMin + Math.random() * this.superSpan;
     }
     for (let i = this.supers.length - 1; i >= 0; i--) {
       const sc = this.supers[i];
@@ -292,7 +326,7 @@ export class JailCoins {
       sc.mesh.position.y = sc.y;
       sc.mesh.rotation.y = time * 0.4;
       // Touch it anywhere near its foot.
-      if (sc.y < sc.rest + 20 && Math.hypot(sc.x - pos.x, sc.z - pos.z) < SUPER_R * 0.6 + 2) {
+      if (sc.y < sc.rest + 20 && Math.hypot(sc.x - pos.x, sc.z - pos.z) < sc.r * 0.6 + 2) {
         this.scene.remove(sc.mesh);
         sc.mesh.geometry.dispose();
         this.supers.splice(i, 1);
@@ -300,7 +334,7 @@ export class JailCoins {
         worth += SUPER_WORTH;
       }
     }
-    this.acc += dt * COIN_RATE;
+    this.acc += dt * this.rate;
     while (this.acc >= 1) {
       this.acc -= 1;
       if (this.coins.length < COIN_MAX) this.throwOne();
@@ -321,6 +355,7 @@ export class JailCoins {
       }
       const reach = c.big ? PICK * 1.6 : PICK;
       if (Math.abs(c.x - pos.x) < reach && Math.abs(c.z - pos.z) < reach && Math.abs(c.y - pos.y) < reach + 1) {
+        c.live = false;
         this.coins[i] = this.coins[this.coins.length - 1];
         this.coins.pop();
         count += c.big ? BIG_COUNT : 1;
