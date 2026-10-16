@@ -23,7 +23,7 @@ import { War, JAIL, PENALTY } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
 import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
 import { Tears } from './tears.js';
-import { RoomZones, BUILDING, MACHINES, ROOMS } from './penalty.js';
+import { RoomZones, BUILDING, MACHINES, ROOMS, glassMat } from './penalty.js';
 import { OFF, DRIVE } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -84,7 +84,9 @@ grass?.update(player.pos, player.pos, 0, true);
 const backdrop = LEVEL.backdrop ? new Backdrop(scene) : null;
 backdrop?.update(player.pos, true);
 const weather = (LEVEL.weather ?? []).map((w) => new Weather(scene, w));
-const shatter = LEVEL.id === 'snow' ? new Shatter(scene, ice) : null;
+const glassShards = glassMat.clone();
+glassShards.opacity = 0.6;
+const shatter = LEVEL.id === 'snow' ? new Shatter(scene, ice) : LEVEL.id === 'penalty' ? new Shatter(scene, glassShards) : null;
 // Snow: an alarm and an arrow lead the bike to the nearest unbroken ice crystal.
 const finder = LEVEL.id === 'snow' ? new IceFinder(scene, terrain, document.querySelector('.reticle .tag')) : null;
 // Every level: a yellow arrow to the nearest big coin until it is collected.
@@ -215,13 +217,15 @@ let bailPicked = 0;
 const reticleTag = document.querySelector('.reticle .tag');
 let jailCoins = null;
 if (IN_JAIL) {
-  jailCoins = new JailCoins(scene, heightAt, { bounds: penBounds(FRIEND, 4), lobFrom: PENS[FRIEND] });
-  const blueCoins = new JailCoins(scene, heightAt, { bounds: penBounds(FOE, 4), lobFrom: PENS[FOE] });
+  // Coins come in fast, and big ones often.
+  const pour = { rate: 25, bigShare: 0.3, superMin: 10, superSpan: 5 };
+  jailCoins = new JailCoins(scene, heightAt, { bounds: penBounds(FRIEND, 4), lobFrom: PENS[FRIEND], ...pour });
+  const blueCoins = new JailCoins(scene, heightAt, { bounds: penBounds(FOE, 4), lobFrom: PENS[FOE], ...pour });
   swarm.coinSources = [{ box: penBounds(FRIEND, 0), src: jailCoins }, { box: penBounds(FOE, 0), src: blueCoins }];
   swarm.extraCoins = [blueCoins]; // updated with nobody to pick them but the swarm
 } else if (IN_PENALTY) {
   // Busy machines: big coins and 10,000-coin super coins are common.
-  jailCoins = new JailCoins(scene, heightAt, { bounds: BUILDING, machines: MACHINES, rate: 18, bigShare: 0.3, superR: 3.5, superMin: 6, superSpan: 6 });
+  jailCoins = new JailCoins(scene, heightAt, { bounds: BUILDING, machines: MACHINES, rate: 40, bigShare: 0.35, superR: 4, superMin: 4, superSpan: 4 });
   swarm.coinSources = [{ box: BUILDING, src: jailCoins }];
 }
 const route = IN_JAIL ? new RouteOverlay(scene, heightAt) : null;
@@ -549,10 +553,17 @@ function frame(timestamp) {
   const over = LOCKED && player.speed > JAIL_TOP && player.shoved <= 0;
   if (over && !dead && leaving <= 0 && bailing <= 0 && war.winner == null && fineIn <= 0) {
     fineIn = FINE_GAP;
-    const short = coinCount() < FINE;
-    setCoins(coinCount() - FINE);
-    gained++;
-    showAlert(short ? `超速！罰 ${formatCoinCount(FINE)} 枚，欠款 ${formatCoinCount(-coinCount())} 枚` : `超速！罰 ${formatCoinCount(FINE)} 枚`, 2, short ? 'death' : 'warn');
+    if (IN_JAIL && coinCount() < 0) {
+      // Speeding again while already in debt: off to the glass penalty jail.
+      war.send(0, PENALTY);
+      showAlert('欠款還超速！關進玻璃罰錢牢', 2, 'death');
+      leaving = 1.6;
+    } else {
+      const short = coinCount() < FINE;
+      setCoins(coinCount() - FINE);
+      gained++;
+      showAlert(short ? `超速！罰 ${formatCoinCount(FINE)} 枚，欠款 ${formatCoinCount(-coinCount())} 枚` : `超速！罰 ${formatCoinCount(FINE)} 枚`, 2, short ? 'death' : 'warn');
+    }
   }
   if (route && war.winner == null) {
     const r = route.update(time, player.pos, coinCount() >= SEE_ROUTE);

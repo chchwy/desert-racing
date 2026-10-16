@@ -277,7 +277,7 @@ export class JailCoins {
     this.two = new THREE.Vector3(2, 2, 2);
   }
 
-  throwOne() {
+  throwOne(pos) {
     const b = this.inside;
     let sx;
     let sz;
@@ -285,8 +285,19 @@ export class JailCoins {
     let tx;
     let tz;
     if (this.machines) {
-      // Out of a machine overhead, landing a few metres around under it.
-      const mc = this.machines[Math.floor(Math.random() * this.machines.length)];
+      // Out of a machine overhead, landing a few metres around under it. Most come out
+      // of the machine over the bike's own room, so there is always plenty to grab.
+      let mc = this.machines[Math.floor(Math.random() * this.machines.length)];
+      if (Math.random() < 0.6) {
+        let best = Infinity;
+        for (const m of this.machines) {
+          const d = (m.x - pos.x) ** 2 + (m.z - pos.z) ** 2;
+          if (d < best) {
+            best = d;
+            mc = m;
+          }
+        }
+      }
       sx = mc.x;
       sz = mc.z;
       sy = this.heightAt(sx, sz) + 11;
@@ -369,7 +380,7 @@ export class JailCoins {
     this.acc += dt * this.rate;
     while (this.acc >= 1) {
       this.acc -= 1;
-      if (this.coins.length < COIN_MAX) this.throwOne();
+      if (this.coins.length < COIN_MAX) this.throwOne(pos);
     }
     let n = 0;
     for (let i = this.coins.length - 1; i >= 0; i--) {

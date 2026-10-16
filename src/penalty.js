@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 
-// The penalty jail, for riders caught speeding in jail without the 10,000-coin fine: a
-// block of ROOMS x ROOMS rooms with walls between them and a door in the middle of every
-// inner wall. Each rider starts alone in a room (the player in room 0, around the
-// origin). Ramming a door breaks it like an ice crystal (Terrain.smash), and the two
-// rooms open into one. A machine hangs over every room and keeps dropping coins.
+// The penalty jail, for riders caught speeding again while already in debt: a big glass
+// block of ROOMS x ROOMS rooms, one rider to a room (the player in room 0, around the
+// origin). Every inner wall is two glass panels with a brown door between them; ramming
+// a panel or a door breaks it like an ice crystal (Terrain.smash, with glass shards),
+// and the two rooms open into one. A machine hangs over every room and keeps dropping
+// coins. Through the glass you can see the riders next door before you get to them.
 
-export const ROOMS = 4;
-export const ROOM = 36; // metres, wall to wall
+export const ROOMS = 8;
+export const ROOM = 56; // metres, wall to wall
 const WALL_H = 8;
-const POST_STEP = 2;
-const DOOR_W = 6;
+const POST_STEP = 1.6;
+const DOOR_W = 7;
 const HALF = ROOM / 2;
 
 // Room k (0..ROOMS²-1) center and floor box.
@@ -24,51 +25,39 @@ export function roomBox(k, margin = 2.5) {
 export const BUILDING = { x0: -HALF, x1: (ROOMS - 1) * ROOM + HALF, z0: -HALF, z1: (ROOMS - 1) * ROOM + HALF };
 export const MACHINES = Array.from({ length: ROOMS * ROOMS }, (_, k) => roomCenter(k));
 
-// Which room a point is in, or -1 outside.
-export function roomAt(x, z) {
-  const i = Math.round(x / ROOM);
-  const j = Math.round(z / ROOM);
-  if (i < 0 || j < 0 || i >= ROOMS || j >= ROOMS) return -1;
-  return j * ROOMS + i;
-}
-
-// Walls as segments { x0, z0, x1, z1 }, and doors on the inner ones with the two rooms
-// each joins.
+// Glass panels and doors. Each is a straight piece { x0, z0, x1, z1 }; the inner ones
+// carry the two rooms they separate and can be broken.
 function layout() {
-  const walls = [];
-  const doors = [];
+  const pieces = [];
   for (let k = 0; k <= ROOMS; k++) {
     const line = -HALF + k * ROOM;
     for (let r = 0; r < ROOMS; r++) {
       const a = -HALF + r * ROOM;
       const b = a + ROOM;
       const inner = k > 0 && k < ROOMS;
-      // A wall along z at x = line (between columns k-1 and k), and one along x at z = line.
       for (const vertical of [true, false]) {
-        const seg = vertical ? { x0: line, z0: a, x1: line, z1: b } : { x0: a, z0: line, x1: b, z1: line };
+        const seg = (u0, u1) => (vertical ? { x0: line, z0: u0, x1: line, z1: u1 } : { x0: u0, z0: line, x1: u1, z1: line });
         if (!inner) {
-          walls.push(seg);
+          pieces.push({ ...seg(a, b), kind: 'glass', rooms: null });
           continue;
         }
+        const rooms = vertical ? [r * ROOMS + (k - 1), r * ROOMS + k] : [(k - 1) * ROOMS + r, k * ROOMS + r];
         const mid = (a + b) / 2;
-        const lo = mid - DOOR_W / 2;
-        const hi = mid + DOOR_W / 2;
-        if (vertical) {
-          walls.push({ x0: line, z0: a, x1: line, z1: lo }, { x0: line, z0: hi, x1: line, z1: b });
-          doors.push({ x: line, z: mid, along: 'z', rooms: [r * ROOMS + (k - 1), r * ROOMS + k] });
-        } else {
-          walls.push({ x0: a, z0: line, x1: lo, z1: line }, { x0: hi, z0: line, x1: b, z1: line });
-          doors.push({ x: mid, z: line, along: 'x', rooms: [(k - 1) * ROOMS + r, k * ROOMS + r] });
-        }
+        pieces.push({ ...seg(a, mid - DOOR_W / 2), kind: 'glass', rooms });
+        pieces.push({ ...seg(mid - DOOR_W / 2, mid + DOOR_W / 2), kind: 'door', rooms });
+        pieces.push({ ...seg(mid + DOOR_W / 2, b), kind: 'glass', rooms });
       }
     }
   }
-  return { walls, doors };
+  return pieces;
 }
-const LAYOUT = layout();
+const PIECES = layout();
 
-const wallMat = new THREE.MeshStandardMaterial({ color: 0x6c6a66, roughness: 0.95 });
-const doorMat = new THREE.MeshStandardMaterial({ color: 0x7a3a20, roughness: 0.7, metalness: 0.3 });
+export const glassMat = new THREE.MeshStandardMaterial({
+  color: 0xbfe8ff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.2, depthWrite: false, side: THREE.DoubleSide,
+});
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a9298, metalness: 0.7, roughness: 0.35 });
+const doorMat = new THREE.MeshStandardMaterial({ color: 0x7a4a26, roughness: 0.7, metalness: 0.15 });
 const machineMat = new THREE.MeshStandardMaterial({ color: 0x40444c, metalness: 0.6, roughness: 0.4, emissive: 0x302008 });
 const box = new THREE.BoxGeometry(1, 1, 1);
 
@@ -85,59 +74,60 @@ export function buildPenaltyProps(cx, cz, size, heightAt) {
   const p = new THREE.Vector3();
   const sc = new THREE.Vector3();
 
-  // Walls: a slab per segment owned by the chunk holding its middle, posts as colliders.
-  const mine = LAYOUT.walls.filter((w) => inChunk((w.x0 + w.x1) / 2, (w.z0 + w.z1) / 2, x0, z0, size));
-  if (mine.length) {
-    const slabs = new THREE.InstancedMesh(box, wallMat, mine.length);
-    mine.forEach((w, i) => {
-      const len = Math.hypot(w.x1 - w.x0, w.z1 - w.z0);
-      const mx = (w.x0 + w.x1) / 2;
-      const mz = (w.z0 + w.z1) / 2;
-      const gy = heightAt(mx, mz);
-      sc.set(w.x0 === w.x1 ? 0.6 : len, WALL_H, w.x0 === w.x1 ? len : 0.6);
-      slabs.setMatrixAt(i, m.compose(p.set(mx, gy + WALL_H / 2 - 0.3, mz), q.identity(), sc));
-      const n = Math.max(1, Math.round(len / POST_STEP));
-      for (let k = 0; k <= n; k++) {
-        const x = w.x0 + ((w.x1 - w.x0) * k) / n;
-        const z = w.z0 + ((w.z1 - w.z0) * k) / n;
-        colliders.push({ x, z, r: 0.4, top: gy + WALL_H });
-      }
-    });
-    slabs.castShadow = true;
-    slabs.receiveShadow = true;
-    slabs.computeBoundingSphere();
-    group.add(slabs);
-  }
-
-  // Doors: one instance each, breakable. A record looks enough like an ice spire
-  // (x, z, baseY, h, w) for main.js's smash dust to work on it.
-  const doors = LAYOUT.doors.filter((d) => inChunk(d.x, d.z, x0, z0, size));
-  if (doors.length) {
-    const mesh = new THREE.InstancedMesh(box, doorMat, doors.length);
-    doors.forEach((d, i) => {
-      const gy = heightAt(d.x, d.z);
-      sc.set(d.along === 'x' ? DOOR_W : 0.5, WALL_H - 1.5, d.along === 'x' ? 0.5 : DOOR_W);
-      mesh.setMatrixAt(i, m.compose(p.set(d.x, gy + (WALL_H - 1.5) / 2 - 0.3, d.z), q.identity(), sc));
-      const rec = { id: i, mesh, index: i, x: d.x, z: d.z, baseY: gy, h: 6, w: 3, colliders: [], door: d };
-      for (let s = -DOOR_W / 2 + 0.5; s <= DOOR_W / 2 - 0.5; s += 1.25) {
-        const c = {
-          x: d.along === 'x' ? d.x + s : d.x,
-          z: d.along === 'x' ? d.z : d.z + s,
-          r: 0.6,
-          top: gy + WALL_H,
-          breakable: rec,
-        };
+  const mine = PIECES.filter((w) => inChunk((w.x0 + w.x1) / 2, (w.z0 + w.z1) / 2, x0, z0, size));
+  const glass = mine.filter((w) => w.kind === 'glass');
+  const doors = mine.filter((w) => w.kind === 'door');
+  const meshes = {
+    glass: glass.length ? new THREE.InstancedMesh(box, glassMat, glass.length) : null,
+    door: doors.length ? new THREE.InstancedMesh(box, doorMat, doors.length) : null,
+  };
+  const index = { glass: 0, door: 0 };
+  for (const w of mine) {
+    const len = Math.hypot(w.x1 - w.x0, w.z1 - w.z0);
+    const mx = (w.x0 + w.x1) / 2;
+    const mz = (w.z0 + w.z1) / 2;
+    const gy = heightAt(mx, mz);
+    const h = w.kind === 'door' ? WALL_H - 1.5 : WALL_H;
+    const along = w.x0 === w.x1 ? 'z' : 'x';
+    sc.set(along === 'x' ? len : w.kind === 'door' ? 0.5 : 0.25, h, along === 'z' ? len : w.kind === 'door' ? 0.5 : 0.25);
+    const mesh = meshes[w.kind];
+    const i = index[w.kind]++;
+    mesh.setMatrixAt(i, m.compose(p.set(mx, gy + h / 2 - 0.3, mz), q.identity(), sc));
+    // A breakable record looks enough like an ice spire (x, z, baseY, h, w) for the
+    // shards and the dust; `door.rooms` says which rooms it joins.
+    const rec = w.rooms ? { id: breakables.length, mesh, index: i, x: mx, z: mz, baseY: gy, h, w: len / 2, colliders: [], door: w } : null;
+    const n = Math.max(1, Math.round(len / POST_STEP));
+    for (let k = 0; k <= n; k++) {
+      const c = { x: w.x0 + ((w.x1 - w.x0) * k) / n, z: w.z0 + ((w.z1 - w.z0) * k) / n, r: 0.5, top: gy + WALL_H };
+      if (rec) {
+        c.breakable = rec;
         rec.colliders.push(c);
-        colliders.push(c);
       }
-      breakables.push(rec);
-    });
-    mesh.castShadow = true;
+      colliders.push(c);
+    }
+    if (rec) breakables.push(rec);
+  }
+  for (const mesh of Object.values(meshes)) {
+    if (!mesh) continue;
+    mesh.receiveShadow = true;
     mesh.computeBoundingSphere();
     group.add(mesh);
   }
+  if (meshes.door) meshes.door.castShadow = true;
 
-  // A coin machine over each room: a box with a chute, hanging high.
+  // Frame posts at the room corners, and a coin machine over each room.
+  for (let i = 0; i <= ROOMS; i++) {
+    for (let j = 0; j <= ROOMS; j++) {
+      const fx = -HALF + i * ROOM;
+      const fz = -HALF + j * ROOM;
+      if (!inChunk(fx, fz, x0, z0, size)) continue;
+      const post = new THREE.Mesh(box, frameMat);
+      post.scale.set(0.6, WALL_H + 0.6, 0.6);
+      post.position.set(fx, heightAt(fx, fz) + WALL_H / 2, fz);
+      group.add(post);
+      colliders.push({ x: fx, z: fz, r: 0.6, top: heightAt(fx, fz) + WALL_H });
+    }
+  }
   for (const mc of MACHINES) {
     if (!inChunk(mc.x, mc.z, x0, z0, size)) continue;
     const gy = heightAt(mc.x, mc.z);
@@ -151,7 +141,7 @@ export function buildPenaltyProps(cx, cz, size, heightAt) {
   return { group, colliders, slopes: [], breakables };
 }
 
-// Rooms joined by broken doors, as union-find over room numbers.
+// Rooms joined by broken panels and doors, as union-find over room numbers.
 export class RoomZones {
   constructor() {
     this.parent = Array.from({ length: ROOMS * ROOMS }, (_, k) => k);
