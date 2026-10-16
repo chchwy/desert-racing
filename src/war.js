@@ -8,8 +8,8 @@ import { FRIEND, FOE } from './teams.js';
 //
 // Only the riders on the player's level are on screen. The rest play it out here, about
 // once a second: free riders may be shot by the other team on their level, at a rate
-// that grows with how many foes share it; jailed riders sometimes pick up their 30 coins
-// and walk free; penalty riders sometimes buy their way back to the jail.
+// that grows with how many foes share it; jailed riders stay jailed; penalty riders
+// sometimes buy their way back to the jail.
 //
 // The state lives in localStorage, so it survives the reload a level change needs.
 // Rider ids: 0 = player, 1..RIVALS = rivals, then the swarm.
@@ -17,7 +17,6 @@ import { FRIEND, FOE } from './teams.js';
 export const STAGES = 6;
 export const JAIL = STAGES;
 export const PENALTY = STAGES + 1;
-const BAIL_RATE = 0.002; // off-screen chance per second a jailed rider gets out
 const PENALTY_BAIL_RATE = 0.003; // ... a penalty rider gets back to the jail
 const KEY = 'desert-racing-war-1';
 const OFFSCREEN_RATE = 0.012; // chance per second per rider, times the foe share on its level
@@ -143,10 +142,7 @@ export class War {
     for (let i = 1; i < this.n; i++) {
       const s = this.stage[i];
       if (s === onScreen) continue;
-      if (s === JAIL) {
-        if (Math.random() < BAIL_RATE) moves.push([i, 0]);
-        continue;
-      }
+      if (s === JAIL) continue; // jail is jail
       if (s === PENALTY) {
         if (Math.random() < PENALTY_BAIL_RATE) moves.push([i, JAIL]);
         continue;

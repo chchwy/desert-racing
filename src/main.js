@@ -240,7 +240,9 @@ if (LOCKED) {
   swarm.speedCap = JAIL_TOP;
   // Same rules for the swarm: thirty coins buy their way out, and a speeder in the jail
   // goes to the penalty jail.
-  swarm.onBail = (i) => war.send(war.swarmBase + i, IN_JAIL ? 0 : JAIL);
+  // Jail is jail: nobody buys their way out of it. Thirty coins in the coin jail only
+  // buy the way back to the jail.
+  swarm.onBail = IN_PENALTY ? (i) => war.send(war.swarmBase + i, JAIL) : null;
   swarm.onSpeed = null; // a fine is all speeding costs now, and the swarm keeps no coins
 }
 const PROTECT = 6; // seconds of spawn protection after arriving on a level
@@ -646,10 +648,10 @@ function frame(timestamp) {
   });
   war.update(dt, STAGE);
   if (LOCKED && war.winner == null && bailing <= 0 && leaving <= 0) {
-    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 超過 90 進超大監牢`;
-    if (bailPicked >= BAIL) {
-      war.send(0, IN_JAIL ? 0 : JAIL);
-      showAlert(IN_JAIL ? `撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始` : `撿到 ${BAIL} 枚硬幣！回到監牢`, 2, 'warn');
+    reticleTag.textContent = IN_JAIL ? `監牢 · 140,000 枚才看得到出口 · 超過 90 進超大監牢` : `回監牢 ${Math.min(bailPicked, BAIL)} / ${BAIL} · 超過 90 再罰`;
+    if (IN_PENALTY && bailPicked >= BAIL) {
+      war.send(0, JAIL);
+      showAlert(`撿到 ${BAIL} 枚硬幣！回到監牢`, 2, 'warn');
       bailing = 1.6;
     }
   }
