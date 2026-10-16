@@ -29,7 +29,7 @@ import { Bike } from './bike.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
 import { ChaseCamera } from './camera.js';
-import { LEVEL, LEVELS, LEVEL_ORDER, switchLevel } from './levels.js';
+import { LEVEL, LEVELS, LEVEL_ORDER, PICKER, switchLevel } from './levels.js';
 import { Grass } from './grass.js';
 import { Weather } from './weather.js';
 import { Shatter } from './shatter.js';
@@ -282,7 +282,7 @@ document.getElementById('sub').textContent = LEVEL.sub;
 
 // Level picker: buttons, or the number keys. Picking reloads the page on that level.
 const picker = document.getElementById('levels');
-LEVEL_ORDER.forEach((id, i) => {
+PICKER.forEach((id, i) => {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.textContent = `${i + 1} ${LEVELS[id].name}`;
@@ -292,7 +292,7 @@ LEVEL_ORDER.forEach((id, i) => {
 });
 addEventListener('keydown', (e) => {
   const i = e.code.startsWith('Digit') ? Number(e.code.slice(5)) - 1 : -1;
-  if (i >= 0 && i < LEVEL_ORDER.length) switchLevel(LEVEL_ORDER[i]);
+  if (i >= 0 && i < PICKER.length) switchLevel(PICKER[i]);
 });
 
 const hud = {
@@ -453,8 +453,8 @@ function frame(timestamp) {
   // L3 / R3 step through the level picker.
   if (input.hit('PadLevelBack') || input.hit('PadLevelForward')) {
     const step = input.hit('PadLevelBack') ? -1 : 1;
-    const at = Math.max(LEVEL_ORDER.indexOf(LEVEL.id), 0);
-    switchLevel(LEVEL_ORDER[(at + step + LEVEL_ORDER.length) % LEVEL_ORDER.length]);
+    const at = Math.max(PICKER.indexOf(LEVEL.id), 0);
+    switchLevel(PICKER[(at + step + PICKER.length) % PICKER.length]);
   }
   if (input.hit('Backspace') && deadTimer <= 0 && !shownWinner) {
     player.reset();

@@ -172,7 +172,7 @@ export const LEVELS = {
     },
     dust: { color: srgb(0.78, 0.9, 0.92), shade: srgb(0.55, 0.68, 0.7) },
   },
-  // Where riders shot on the last level end up (war.js). Not in the picker.
+  // Where riders shot on the last level end up (war.js). Seventh in the picker.
   jail: {
     id: 'jail',
     name: '監牢',
@@ -223,6 +223,8 @@ export const LEVELS = {
 };
 
 export const LEVEL_ORDER = ['desert', 'rainforest', 'grassland', 'snow', 'volcano', 'ocean'];
+// The HUD picker and the number keys: the six levels, then the jail as the seventh.
+export const PICKER = [...LEVEL_ORDER, 'jail'];
 
 function pickLevel() {
   if (typeof location === 'undefined') return LEVELS.desert;
