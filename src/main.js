@@ -185,12 +185,11 @@ const SHIELD = 10000; // coins that absorb one hit
 // In jail, coins are thrown into the pens from outside and pile up where they land; in
 // the penalty jail they drop from a machine over every room. Pick up BAIL of them to
 // get out: from the jail back to the first level, from the penalty jail back to the
-// jail. Locked up, the bike tops out at JAIL_TOP; boosting can push it on to
-// SPEED_LIMIT, and reaching that is speeding: a speeder pays FINE coins, or, short of
-// them, lands in the penalty jail.
+// jail. Locked up, the bike may go up to MAX_LOCKED, but over JAIL_TOP is speeding: a
+// speeder pays FINE coins, or, short of them, lands in the penalty jail.
 const BAIL = 30;
-const JAIL_TOP = 30 / 3.6; // 30 km/h
-const SPEED_LIMIT = 40 / 3.6; // 40 km/h, and the fine
+const JAIL_TOP = 30 / 3.6; // 30 km/h: the limit
+const MAX_LOCKED = 40 / 3.6; // 40 km/h: as fast as a bike goes locked up
 const FINE = 400000;
 const FINE_GAP = 5; // seconds between two fines
 let fineIn = 0;
@@ -513,13 +512,12 @@ function frame(timestamp) {
     }
     for (const c of swarm.extraCoins ?? []) c.update(dt, time, FAR_AWAY);
   }
-  // Locked up, reaching 40 km/h is speeding: pay 400,000, or go to the penalty jail.
-  // The bike is held at 30 km/h, or 40 while boosting; reaching 40 is speeding.
+  // Locked up, over 30 km/h is speeding: pay 400,000, or go to the penalty jail.
+  // Locked up the bike goes 40 km/h at most, and over 30 is speeding.
   fineIn -= dt;
-  const cap = player.boost > 0.3 ? SPEED_LIMIT : JAIL_TOP;
-  const over = LOCKED && player.speed >= SPEED_LIMIT - 0.05;
-  if (LOCKED && player.speed > cap) {
-    const k = cap / player.speed;
+  const over = LOCKED && player.speed > JAIL_TOP;
+  if (LOCKED && player.speed > MAX_LOCKED) {
+    const k = MAX_LOCKED / player.speed;
     player.vel.x *= k;
     player.vel.z *= k;
   }
@@ -603,7 +601,7 @@ function frame(timestamp) {
   });
   war.update(dt, STAGE);
   if (LOCKED && war.winner == null && bailing <= 0 && leaving <= 0) {
-    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 限速 30 · 40 罰 40 萬`;
+    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 超過 30 罰 40 萬`;
     if (bailPicked >= BAIL) {
       war.send(0, IN_JAIL ? 0 : JAIL);
       showAlert(IN_JAIL ? `撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始` : `撿到 ${BAIL} 枚硬幣！回到監牢`, 2, 'warn');
