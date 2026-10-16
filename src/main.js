@@ -21,7 +21,7 @@ import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
 import { formatCoinCount, coinCount, setCoins } from './coins.js';
 import { War, JAIL } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
-import { penSlot } from './jail.js';
+import { penSlot, penBounds } from './jail.js';
 import { OFF, DRIVE, PARKED } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -173,6 +173,17 @@ war.onMove((id) => {
 war.save();
 
 const SHIELD = 10000; // coins that absorb one hit
+// In jail the rain falls inside the player's pen, always full, each coin worth 100 times
+// as much; BAIL coins buy the way out, back to the first level.
+const BAIL = 30000000;
+const JAIL_WORTH = 100;
+let bailing = 0;
+const reticleTag = document.querySelector('.reticle .tag');
+if (IN_JAIL) {
+  coinRain.bounds = penBounds(FRIEND, 4);
+  coinRain.full = true;
+  coinRain.worth = JAIL_WORTH;
+}
 const PROTECT = 6; // seconds of spawn protection after arriving on a level
 const GUN_COOLDOWN = 0.45;
 let protect = PROTECT;
@@ -490,6 +501,19 @@ function frame(timestamp) {
     war.hit(t.id);
   });
   war.update(dt, STAGE);
+  if (IN_JAIL && war.winner == null && bailing <= 0) {
+    reticleTag.textContent = `出獄 ${formatCoinCount()} / ${formatCoinCount(BAIL)}`;
+    if (coinCount() >= BAIL) {
+      setCoins(coinCount() - BAIL);
+      war.release(0);
+      showAlert('三千萬枚硬幣！出獄', 2, 'warn');
+      bailing = 1.6;
+    }
+  }
+  if (bailing > 0) {
+    bailing -= dt;
+    if (bailing <= 0) goToStage(0);
+  }
   if (leaving > 0) {
     leaving -= dt;
     if (leaving <= 0) goToStage(war.stage[0]);

@@ -29,6 +29,12 @@ export function penSlot(team, n) {
   };
 }
 
+// A pen's floor as { x0, x1, z0, z1 }, pulled in by margin.
+export function penBounds(team, margin = 0) {
+  const pen = PENS[team];
+  return { x0: pen.x - HALF_X + margin, x1: pen.x + HALF_X - margin, z0: pen.z - HALF_Z + margin, z1: pen.z + HALF_Z - margin };
+}
+
 // Is (x, z) inside a pen, with a margin?
 export function inPen(team, x, z, margin = 0) {
   const pen = PENS[team];

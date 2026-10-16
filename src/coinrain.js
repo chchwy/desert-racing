@@ -58,6 +58,11 @@ export class CoinRain {
     }));
     this.mesh.setColorAt(0, PLAIN);
     this.burstIn = 3;
+    // The jail turns these on: rain only inside the pen, always at full density, and
+    // every coin worth `worth` times as much.
+    this.bounds = null; // { x0, x1, z0, z1 }
+    this.full = false;
+    this.worth = 1;
     this.burstAt = 0; // next coin index a burst takes over
     this.active = [];
     this.density = 0;
@@ -78,6 +83,7 @@ export class CoinRain {
     const lead = Math.min(TOP / FALL, 3);
     c.x = pos.x + vel.x * lead + (Math.random() * 2 - 1) * BOX;
     c.z = pos.z + vel.z * lead + (Math.random() * 2 - 1) * BOX;
+    this.keepIn(c);
     c.ground = this.terrain.floorAt(c.x, c.z);
     c.y = c.ground + (fill ? Math.random() : 1) * TOP + 2;
     c.landed = -1;
@@ -102,17 +108,26 @@ export class CoinRain {
       this.spawn(c, pos, vel, false);
       c.x = cx + Math.cos(a) * r;
       c.z = cz + Math.sin(a) * r;
+      this.keepIn(c);
       c.ground = this.terrain.floorAt(c.x, c.z);
       c.y = c.ground + TOP * 0.6 + Math.random() * TOP;
       c.fall = FALL + FALL_SPAN * (0.5 + Math.random() * 0.5);
     }
   }
 
+  // Inside the bounds, when there are any: a coin outside wraps to a random spot in them.
+  keepIn(c) {
+    const b = this.bounds;
+    if (!b) return;
+    if (c.x < b.x0 || c.x > b.x1) c.x = b.x0 + Math.random() * (b.x1 - b.x0);
+    if (c.z < b.z0 || c.z > b.z1) c.z = b.z0 + Math.random() * (b.z1 - b.z0);
+  }
+
   // Remove a coin someone picked up; it comes back at the top.
   take(c, byPlayer) {
     c.live = false;
     if (byPlayer) {
-      addCoins(c.jackpot ? JACKPOT_WORTH : RAIN_WORTH);
+      addCoins((c.jackpot ? JACKPOT_WORTH : RAIN_WORTH) * this.worth);
       if (this.chimeIn <= 0) {
         chime();
         this.chimeIn = 0.06;
@@ -125,7 +140,7 @@ export class CoinRain {
     this.chimeIn -= dt;
     this.check -= dt;
     if (this.check <= 0) {
-      this.density = this.zone(player.pos);
+      this.density = this.full ? 1 : this.zone(player.pos);
       this.check = 0.25;
     }
     const want = Math.round(MAX * this.density);

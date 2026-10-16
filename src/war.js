@@ -88,6 +88,13 @@ export class War {
     return to;
   }
 
+  // Out of jail and back to the first level (the player buys its way out).
+  release(id) {
+    const from = this.stage[id];
+    this.stage[id] = 0;
+    for (const fn of this.listeners) fn(id, from, 0);
+  }
+
   // Counts per team: { free, jailed } for FRIEND and FOE.
   counts() {
     const c = { [FRIEND]: { free: 0, jailed: 0 }, [FOE]: { free: 0, jailed: 0 } };
