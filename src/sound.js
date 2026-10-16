@@ -49,6 +49,36 @@ export function chime() {
   }
 }
 
+// A sob: a wavering voice-like tone that sinks, twice. strength 0..1.
+export function sob(strength = 1) {
+  if (!ctx || ctx.state !== 'running' || strength < 0.05) return;
+  const t = ctx.currentTime;
+  const f = 330 + Math.random() * 120;
+  for (const dt of [0, 0.32]) {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f * 1.15, t + dt);
+    o.frequency.exponentialRampToValueAtTime(f * 0.7, t + dt + 0.28);
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 9;
+    const vibGain = ctx.createGain();
+    vibGain.gain.value = f * 0.04;
+    vib.connect(vibGain).connect(o.frequency);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t + dt);
+    g.gain.exponentialRampToValueAtTime(0.18 * strength, t + dt + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.3);
+    o.connect(lp).connect(g).connect(out);
+    o.start(t + dt);
+    vib.start(t + dt);
+    o.stop(t + dt + 0.32);
+    vib.stop(t + dt + 0.32);
+  }
+}
+
 // A two-tone alarm beep. urgency 0..1 raises the pitch as the target gets closer.
 export function alarm(urgency) {
   if (!ctx || ctx.state !== 'running') return;

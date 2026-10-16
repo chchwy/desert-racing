@@ -13,7 +13,7 @@ import { FishSchools } from './fish.js';
 import { swellUniforms } from './reef.js';
 import { Sea } from './sea.js';
 import { Rivals } from './rivals.js';
-import { crash, chime } from './sound.js';
+import { crash, chime, sob } from './sound.js';
 import { IceFinder, CoinFinder, TeamFinder } from './finder.js';
 import { CoinRain } from './coinrain.js';
 import { Swarm } from './swarm.js';
@@ -21,7 +21,8 @@ import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
 import { formatCoinCount, coinCount, setCoins, addCoins } from './coins.js';
 import { War, JAIL, PENALTY } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
-import { penBounds, PENS, JailCoins, RouteOverlay } from './jail.js';
+import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
+import { Tears } from './tears.js';
 import { RoomZones, BUILDING, MACHINES, ROOMS } from './penalty.js';
 import { OFF, DRIVE } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
@@ -185,17 +186,27 @@ const SHIELD = 10000; // coins that absorb one hit
 // In jail, coins are thrown into the pens from outside and pile up where they land; in
 // the penalty jail they drop from a machine over every room. Pick up BAIL of them to
 // get out: from the jail back to the first level, from the penalty jail back to the
-// jail. Locked up, the bike may go up to MAX_LOCKED, but over JAIL_TOP is speeding: a
-// speeder pays FINE coins, or, short of them, lands in the penalty jail.
+// jail. Locked up, over JAIL_TOP is speeding: a speeder pays FINE coins, and one who
+// does not have them pays anyway and goes into debt (the coin count can go negative).
 const BAIL = 30;
-const JAIL_TOP = 30 / 3.6; // 30 km/h: the limit
-const MAX_LOCKED = 40 / 3.6; // 40 km/h: as fast as a bike goes locked up
-const FINE = 400000;
+const JAIL_TOP = 90 / 3.6; // 90 km/h: the limit
+const FINE = 300000;
 const FINE_GAP = 5; // seconds between two fines
 let fineIn = 0;
-// The secret route out of the pen: seen with SEE_ROUTE coins, walkable without. Its big
-// coins are worth ROUTE_COIN each, and reaching its finish ends the war on the spot.
-const SEE_ROUTE = 400000;
+// The secret route out of the pen: with SEE_ROUTE coins a rider sees it and the hidden
+// gate in the fence lets it through; without them the gate stays shut. Its big coins are
+// worth ROUTE_COIN each. Reaching the arena at its end ends the war on the spot: the team
+// with more riders free wins, but only if the finisher holds WIN_COINS; short of that it
+// is a draw. Then the losers turn up in the arena crying, for the winners to shoot at.
+const SEE_ROUTE = 140000;
+const WIN_COINS = 200000;
+const DRAW = 2; // war.winner for a draw
+const ARENA_CROWD = 40; // riders of each team brought into the arena
+let arenaOn = false;
+let tearIn = 0;
+let sobIn = 0;
+const tears = IN_JAIL ? new Tears(scene) : null;
+const arenaBox = { x0: ARENA.x0 + 4, x1: ARENA.x1 - 4, z0: ARENA.z0 + 4, z1: ARENA.z1 - 4 };
 const ROUTE_COIN = 10000;
 let finishNote = '';
 let restartIn = 0;
@@ -220,7 +231,7 @@ if (LOCKED) {
   // Same rules for the swarm: thirty coins buy their way out, and a speeder in the jail
   // goes to the penalty jail.
   swarm.onBail = (i) => war.send(war.swarmBase + i, IN_JAIL ? 0 : JAIL);
-  swarm.onSpeed = IN_JAIL ? (i) => war.send(war.swarmBase + i, PENALTY) : null;
+  swarm.onSpeed = null; // a fine is all speeding costs now, and the swarm keeps no coins
 }
 const PROTECT = 6; // seconds of spawn protection after arriving on a level
 const GUN_COOLDOWN = 0.45;
@@ -229,6 +240,23 @@ let leaving = 0; // counts down to the level change after a hit
 let gunIn = 0;
 const playerTarget = { id: 0, team: FRIEND, x: 0, y: 0, z: 0, gone: false };
 const FAR_AWAY = new THREE.Vector3(1e6, 0, 1e6); // nobody near enough to pick up
+
+// Bring a crowd of both teams into the arena: the losers crying, the winners free to
+// shoot at them. It is a show after the war is over; nobody's stage changes.
+function startArena(winner) {
+  arenaOn = true;
+  const taken = { [FRIEND]: 0, [FOE]: 0 };
+  for (let i = 0; i < swarm.n; i++) {
+    const team = swarm.team[i];
+    if (taken[team] >= ARENA_CROWD) continue;
+    taken[team]++;
+    swarm.setState(i, DRIVE);
+    swarm.confine(i, arenaBox);
+    swarm.crying[i] = team === winner ? 0 : 1;
+  }
+  swarm.onBail = null;
+  swarm.onSpeed = null;
+}
 
 function goToStage(stage) {
   war.coins = coinCount();
@@ -488,7 +516,9 @@ function frame(timestamp) {
     player.landImpact = Math.max(player.landImpact, 0.8);
   }
   // two physics substeps for stable hovering at high speed
-  const colliders = terrain.collidersNear(player.pos.x, player.pos.z);
+  // The hidden gate in the jail fence opens only for a rider rich enough to see the route.
+  const seesRoute = coinCount() >= SEE_ROUTE;
+  const colliders = terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
   for (let i = 0; i < 2 && !dead; i++) {
     player.update(dt / 2, input, colliders, (x, z, n) => terrain.floorAt(x, z, n));
     if (i === 0) input.pressed.delete('Space');
@@ -512,28 +542,17 @@ function frame(timestamp) {
     }
     for (const c of swarm.extraCoins ?? []) c.update(dt, time, FAR_AWAY);
   }
-  // Locked up, over 30 km/h is speeding: pay 400,000, or go to the penalty jail.
-  // Locked up the bike goes 40 km/h at most, and over 30 is speeding.
+  // Locked up, over 90 km/h is speeding: pay 300,000, into debt if need be.
+  // Locked up, over 90 km/h is speeding, unless another bike just shoved you there.
   fineIn -= dt;
-  const over = LOCKED && player.speed > JAIL_TOP;
-  if (LOCKED && player.speed > MAX_LOCKED) {
-    const k = MAX_LOCKED / player.speed;
-    player.vel.x *= k;
-    player.vel.z *= k;
-  }
+  player.shoved = Math.max((player.shoved ?? 0) - dt, 0);
+  const over = LOCKED && player.speed > JAIL_TOP && player.shoved <= 0;
   if (over && !dead && leaving <= 0 && bailing <= 0 && war.winner == null && fineIn <= 0) {
     fineIn = FINE_GAP;
-    if (coinCount() >= FINE) {
-      setCoins(coinCount() - FINE);
-      gained++;
-      showAlert(`超速！罰 ${formatCoinCount(FINE)} 枚`, 1.8, 'warn');
-    } else if (IN_JAIL) {
-      war.send(0, PENALTY);
-      showAlert('超速又付不出罰金！關進罰錢牢', 2, 'death');
-      leaving = 1.6;
-    } else {
-      showAlert('超速！付不出罰金', 1.5, 'death');
-    }
+    const short = coinCount() < FINE;
+    setCoins(coinCount() - FINE);
+    gained++;
+    showAlert(short ? `超速！罰 ${formatCoinCount(FINE)} 枚，欠款 ${formatCoinCount(-coinCount())} 枚` : `超速！罰 ${formatCoinCount(FINE)} 枚`, 2, short ? 'death' : 'warn');
   }
   if (route && war.winner == null) {
     const r = route.update(time, player.pos, coinCount() >= SEE_ROUTE);
@@ -543,12 +562,15 @@ function frame(timestamp) {
       gained += r.coins;
     }
     if (r.finished) {
-      // The finish settles the war: the team with more riders still free wins.
+      // The finish settles the war: the team with more riders still free wins, if the
+      // finisher holds WIN_COINS; otherwise it is a draw.
       const c = war.counts();
-      war.winner = c[FRIEND].free >= c[FOE].free ? FRIEND : FOE;
+      const best = c[FRIEND].free >= c[FOE].free ? FRIEND : FOE;
+      war.winner = coinCount() >= WIN_COINS ? best : DRAW;
       war.save();
       finishNote = '抵達終點！';
-      restartIn = 6;
+      if (war.winner !== DRAW) startArena(war.winner);
+      else restartIn = 6;
     }
   }
   swarm.update(dt, time, camera.position, !dead);
@@ -563,7 +585,7 @@ function frame(timestamp) {
   // Weapons: R (or B) fires the air cannon, one ring out at a time; T a burst of four.
   protect = Math.max(protect - dt, 0);
   gunIn -= dt;
-  const armed = !dead && leaving <= 0 && war.winner == null;
+  const armed = !dead && leaving <= 0 && (war.winner == null || arenaOn);
   const muzzleY = player.pos.y + 1.2;
   if (armed && (input.hit('KeyR') || input.hit('KeyB'))) weapons.fire(AIR, 0, FRIEND, player.pos.x, muzzleY, player.pos.z, player.yaw);
   if (armed && input.hit('KeyT') && gunIn <= 0) {
@@ -598,10 +620,15 @@ function frame(timestamp) {
       dust.emit(t.x, t.y + 1, t.z, Math.cos(a) * 6, 2 + Math.random() * 5, Math.sin(a) * 6, 1.6 + Math.random() * 1.5, 1 + Math.random());
     }
     if (!LOCKED) war.hit(t.id); // locked up, a hit only knocks the dust off
+    // A crying loser in the arena starts over somewhere else in it, still crying.
+    if (arenaOn && t.group === 'swarm' && swarm.crying[t.index]) {
+      swarm.confine(t.index, arenaBox);
+      crash(0.6);
+    }
   });
   war.update(dt, STAGE);
   if (LOCKED && war.winner == null && bailing <= 0 && leaving <= 0) {
-    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 超過 30 罰 40 萬`;
+    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 超過 90 罰 30 萬`;
     if (bailPicked >= BAIL) {
       war.send(0, IN_JAIL ? 0 : JAIL);
       showAlert(IN_JAIL ? `撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始` : `撿到 ${BAIL} 枚硬幣！回到監牢`, 2, 'warn');
@@ -619,10 +646,30 @@ function frame(timestamp) {
   if (war.winner != null && !shownWinner) {
     shownWinner = true;
     const lose = war.winner === FRIEND ? '藍隊' : '紅隊';
-    showAlert(`${finishNote}${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝，${lose}輸了！ 按 Enter（手把 Menu）重新開始`, 1e9, war.winner === FRIEND ? 'warn' : 'death');
+    if (war.winner === DRAW) showAlert(`${finishNote}硬幣不到 ${formatCoinCount(WIN_COINS)}，平手！ 按 Enter（手把 Menu）重新開始`, 1e9, 'warn result');
+    else showAlert(`${finishNote}${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝，${lose}輸了！ 按 Enter（手把 Menu）重新開始`, 1e9, war.winner === FRIEND ? 'warn result' : 'death result');
   }
   if (restartIn > 0) restartIn -= dt;
-  if (shownWinner && (input.hit('Enter') || input.hit('Backspace') || (finishNote && restartIn <= 0))) {
+  // The arena: crying losers shed tears, and the nearest one sobs.
+  if (arenaOn) {
+    tearIn -= dt;
+    sobIn -= dt;
+    let nearest = Infinity;
+    for (let i = 0; i < swarm.n; i++) {
+      if (!swarm.crying[i] || swarm.state[i] !== DRIVE) continue;
+      const d = Math.hypot(swarm.x[i] - camera.position.x, swarm.z[i] - camera.position.z);
+      nearest = Math.min(nearest, d);
+      if (tearIn <= 0 && d < 90) tears.cry(swarm.x[i], swarm.y[i] + 1.95, swarm.z[i], swarm.yaw[i]);
+    }
+    if (tearIn <= 0) tearIn = 0.12;
+    if (sobIn <= 0 && nearest < 60) {
+      sob(1 - nearest / 60);
+      sobIn = 0.9 + Math.random() * 0.8;
+    }
+  }
+  tears?.update(dt);
+  // A draw starts over by itself; after a win the arena stays until Enter (pad Menu).
+  if (shownWinner && (input.hit('Enter') || input.hit('Backspace') || (war.winner === DRAW && finishNote && restartIn <= 0))) {
     war.reset();
     setCoins(0);
     if (LEVEL.id === 'desert') location.reload();

@@ -5,10 +5,11 @@ import { FRIEND, FOE } from './teams.js';
 // bikes parked in rows. The red pen is around the origin, so a jailed player starts
 // inside it. Bars are spaced so the bike's 1.3 m padding cannot slip between them.
 //
-// The red pen has a way out: a few bars missing on its south side, easy to miss, open
-// onto a secret winding route walled in on both sides. The walls are colliders with no
-// mesh, and the route itself is drawn only for a player rich enough to see it
-// (RouteOverlay). Big coins sit along the way, and a finish gate stands at the end.
+// Each pen has a way out: a few bars missing on its south side, easy to miss, open onto
+// a secret winding route walled in on both sides. The walls are colliders with no mesh,
+// and the routes are drawn only for a player rich enough to see them (RouteOverlay).
+// Big coins sit along the way, and both routes end in the fenced arena where red and
+// blue meet; reaching it is the finish.
 
 const HALF_X = 85;
 const HALF_Z = 70;
@@ -75,19 +76,24 @@ function perimeter(pen) {
   return out;
 }
 
-// The secret route, as a polyline out of the red pen's south side, ROUTE_W either side.
-export const ROUTE = [
-  [40, -60], [40, -110], [-20, -150], [-20, -200], [60, -240], [60, -295],
-].map(([x, z]) => ({ x, z }));
+// The secret routes: one out of each pen's south side (the blue one mirrors the red),
+// ROUTE_W either side, both running into the arena where red and blue meet.
+const RED_ROUTE = [[40, -60], [40, -110], [-20, -150], [-20, -200], [60, -240], [60, -305]];
+export const ROUTES = {
+  [FRIEND]: RED_ROUTE.map(([x, z]) => ({ x, z })),
+  [FOE]: RED_ROUTE.map(([x, z]) => ({ x: PENS[FOE].x - x, z })),
+};
 export const ROUTE_W = 4;
-export const ROUTE_END = ROUTE[ROUTE.length - 1];
+export const ARENA = { x0: 40, x1: 220, z0: -370, z1: -295 };
+export function inArena(x, z, margin = 0) {
+  return x > ARENA.x0 + margin && x < ARENA.x1 - margin && z > ARENA.z0 + margin && z < ARENA.z1 - margin;
+}
 
-// Distance from (x, z) to the route polyline.
-export function routeDistance(x, z) {
+function distTo(route, x, z) {
   let best = Infinity;
-  for (let i = 0; i < ROUTE.length - 1; i++) {
-    const a = ROUTE[i];
-    const b = ROUTE[i + 1];
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i];
+    const b = route[i + 1];
     const dx = b.x - a.x;
     const dz = b.z - a.z;
     const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz)));
@@ -96,44 +102,66 @@ export function routeDistance(x, z) {
   return best;
 }
 
+// Distance from (x, z) to the nearer route.
+export function routeDistance(x, z) {
+  return Math.min(distTo(ROUTES[FRIEND], x, z), distTo(ROUTES[FOE], x, z));
+}
+
 // Wall posts along both sides of every segment, dropping the ones that would poke into
-// the corridor at a bend. The end is capped behind the finish.
+// the corridor at a bend, and the ones inside a pen or the arena (their fences do it).
 function routeWalls() {
   const out = [];
   const off = ROUTE_W + 0.2;
-  for (let i = 0; i < ROUTE.length - 1; i++) {
-    const a = ROUTE[i];
-    const b = ROUTE[i + 1];
-    const len = Math.hypot(b.x - a.x, b.z - a.z);
-    const ux = (b.x - a.x) / len;
-    const uz = (b.z - a.z) / len;
-    const n = Math.ceil(len / BAR_STEP);
-    for (let k = 0; k <= n; k++) {
-      for (const side of [-1, 1]) {
-        const x = a.x + ux * (len * k) / n - uz * off * side;
-        const z = a.z + uz * (len * k) / n + ux * off * side;
-        // Inside the pen the fence does the job; past it the walls run the route.
-        if (inPen(FRIEND, x, z, -1)) continue;
-        if (routeDistance(x, z) < ROUTE_W) continue;
-        out.push({ x, z, yaw: Math.atan2(uz, ux) });
+  for (const route of Object.values(ROUTES)) {
+    for (let i = 0; i < route.length - 1; i++) {
+      const a = route[i];
+      const b = route[i + 1];
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const ux = (b.x - a.x) / len;
+      const uz = (b.z - a.z) / len;
+      const n = Math.ceil(len / BAR_STEP);
+      for (let k = 0; k <= n; k++) {
+        for (const side of [-1, 1]) {
+          const x = a.x + ux * (len * k) / n - uz * off * side;
+          const z = a.z + uz * (len * k) / n + ux * off * side;
+          if (inPen(FRIEND, x, z, -1) || inPen(FOE, x, z, -1) || inArena(x, z, -1)) continue;
+          if (routeDistance(x, z) < ROUTE_W) continue;
+          out.push({ x, z, yaw: Math.atan2(uz, ux) });
+        }
       }
     }
   }
-  const e = ROUTE_END;
-  const p = ROUTE[ROUTE.length - 2];
-  const len = Math.hypot(e.x - p.x, e.z - p.z);
-  const ux = (e.x - p.x) / len;
-  const uz = (e.z - p.z) / len;
-  for (let s = -ROUTE_W; s <= ROUTE_W; s += BAR_STEP) out.push({ x: e.x + ux * 3 - uz * s, z: e.z + uz * 3 + ux * s, yaw: 0 });
   return out;
 }
 
+// The arena's fence, open where the two routes come in.
+function arenaFence() {
+  const out = [];
+  const side = (x0, z0, x1, z1) => {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const n = Math.round(len / BAR_STEP);
+    const yaw = Math.atan2(z1 - z0, x1 - x0);
+    for (let i = 0; i < n; i++) out.push({ x: x0 + ((x1 - x0) * i) / n, z: z0 + ((z1 - z0) * i) / n, yaw });
+  };
+  const a = ARENA;
+  side(a.x0, a.z0, a.x1, a.z0);
+  side(a.x1, a.z0, a.x1, a.z1);
+  side(a.x1, a.z1, a.x0, a.z1);
+  side(a.x0, a.z1, a.x0, a.z0);
+  return out.filter((b) => routeDistance(b.x, b.z) > ROUTE_W);
+}
+
 const BARS = {
-  // The red fence loses the bars where the route crosses it: that gap is the way out.
-  [FRIEND]: perimeter(PENS[FRIEND]).filter((b) => routeDistance(b.x, b.z) > ROUTE_W),
-  [FOE]: perimeter(PENS[FOE]),
+  // Each fence loses the bars where its route crosses it: that gap is the way out.
+  red: perimeter(PENS[FRIEND]).filter((b) => routeDistance(b.x, b.z) > ROUTE_W),
+  blue: perimeter(PENS[FOE]).filter((b) => routeDistance(b.x, b.z) > ROUTE_W),
+  arena: arenaFence(),
 };
 export const ROUTE_WALLS = routeWalls();
+
+// The gaps in the pen fences, closed by an invisible gate: colliders marked `gate`, which
+// main.js leaves out for a rider holding enough coins to see the way out.
+const GATE_POSTS = [PENS[FRIEND], PENS[FOE]].flatMap((pen) => perimeter(pen).filter((b) => routeDistance(b.x, b.z) <= ROUTE_W));
 
 export function buildJailProps(cx, cz, size, heightAt) {
   const group = new THREE.Group();
@@ -141,8 +169,8 @@ export function buildJailProps(cx, cz, size, heightAt) {
   const x0 = cx * size;
   const z0 = cz * size;
   const mine = [];
-  for (const team of [FRIEND, FOE]) {
-    for (const b of BARS[team]) {
+  for (const fence of Object.values(BARS)) {
+    for (const b of fence) {
       if (b.x >= x0 && b.x < x0 + size && b.z >= z0 && b.z < z0 + size) mine.push(b);
     }
   }
@@ -170,6 +198,10 @@ export function buildJailProps(cx, cz, size, heightAt) {
       mesh.computeBoundingSphere();
       group.add(mesh);
     }
+  }
+  for (const g of GATE_POSTS) {
+    if (g.x < x0 || g.x >= x0 + size || g.z < z0 || g.z >= z0 + size) continue;
+    colliders.push({ x: g.x, z: g.z, r: 0.15, top: heightAt(g.x, g.z) + BAR_H, gate: true });
   }
   // The route's walls: colliders only, nothing to see.
   for (const w of ROUTE_WALLS) {
@@ -372,9 +404,9 @@ export class JailCoins {
   }
 }
 
-// What a rich enough player sees of the secret route: a glowing road, ghostly walls and
-// the big coins along it. The finish gate shows to anyone close enough.
-const ROUTE_COINS = 8;
+// What a rich enough player sees of the secret routes: glowing roads, ghostly walls and
+// the big coins along them. The finish banner over the arena shows to anyone close.
+const ROUTE_COINS = 6; // per route
 const ROUTE_COIN_R = 2.6;
 const roadMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 1.6, 1.2), transparent: true, opacity: 0.35, depthWrite: false });
 const ghostMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.6, 0.9, 1.4), transparent: true, opacity: 0.25, depthWrite: false });
@@ -397,22 +429,49 @@ function finishTexture() {
   return t;
 }
 
+// The point `d` metres along a route.
+function along(route, d) {
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i];
+    const b = route[i + 1];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    if (d <= len) return { x: a.x + ((b.x - a.x) * d) / len, z: a.z + ((b.z - a.z) * d) / len };
+    d -= len;
+  }
+  return route[route.length - 1];
+}
+
 export class RouteOverlay {
   constructor(scene, heightAt) {
     this.secret = new THREE.Group(); // only for the rich
     this.secret.visible = false;
-    // Road: one flat ribbon per segment, a little above the ground.
-    for (let i = 0; i < ROUTE.length - 1; i++) {
-      const a = ROUTE[i];
-      const b = ROUTE[i + 1];
-      const len = Math.hypot(b.x - a.x, b.z - a.z);
-      const geo = new THREE.PlaneGeometry(ROUTE_W * 2, len + ROUTE_W * 2);
-      geo.rotateX(-Math.PI / 2); // flat, its length along local Z
-      const road = new THREE.Mesh(geo, roadMat);
-      road.rotation.y = Math.atan2(b.x - a.x, b.z - a.z); // local +Z along the segment
-      road.position.set((a.x + b.x) / 2, heightAt((a.x + b.x) / 2, (a.z + b.z) / 2) + 0.15, (a.z + b.z) / 2);
-      road.renderOrder = 2;
-      this.secret.add(road);
+    this.coins = [];
+    for (const route of Object.values(ROUTES)) {
+      // Road: one flat ribbon per segment, a little above the ground.
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = route[i];
+        const b = route[i + 1];
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const geo = new THREE.PlaneGeometry(ROUTE_W * 2, len + ROUTE_W * 2);
+        geo.rotateX(-Math.PI / 2); // flat, its length along local Z
+        const road = new THREE.Mesh(geo, roadMat);
+        road.rotation.y = Math.atan2(b.x - a.x, b.z - a.z); // local +Z along the segment
+        road.position.set((a.x + b.x) / 2, heightAt((a.x + b.x) / 2, (a.z + b.z) / 2) + 0.15, (a.z + b.z) / 2);
+        road.renderOrder = 2;
+        this.secret.add(road);
+      }
+      // Big coins spaced along the route, past the fence.
+      const total = route.slice(1).reduce((s, b, i) => s + Math.hypot(b.x - route[i].x, b.z - route[i].z), 0);
+      for (let k = 1; k <= ROUTE_COINS; k++) {
+        const p = along(route, (total * (k + 0.5)) / (ROUTE_COINS + 1.5));
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(ROUTE_COIN_R, ROUTE_COIN_R, 0.35, 32), coinMat);
+        mesh.rotation.order = 'YXZ'; // stood up on X, then spun about the vertical
+        mesh.rotation.x = Math.PI / 2;
+        const y = heightAt(p.x, p.z) + ROUTE_COIN_R + 0.4;
+        mesh.position.set(p.x, y, p.z);
+        this.secret.add(mesh);
+        this.coins.push({ x: p.x, z: p.z, y, mesh, taken: false });
+      }
     }
     const ghosts = new THREE.InstancedMesh(barGeo, ghostMat, ROUTE_WALLS.length);
     const m = new THREE.Matrix4();
@@ -420,57 +479,30 @@ export class RouteOverlay {
     this.secret.add(ghosts);
     scene.add(this.secret);
 
-    // Big coins spaced along the route, past the fence.
-    this.coins = [];
-    const total = ROUTE.slice(1).reduce((s, b, i) => s + Math.hypot(b.x - ROUTE[i].x, b.z - ROUTE[i].z), 0);
-    for (let k = 1; k <= ROUTE_COINS; k++) {
-      const p = this.along((total * (k + 0.5)) / (ROUTE_COINS + 1.5));
-      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(ROUTE_COIN_R, ROUTE_COIN_R, 0.35, 32), coinMat);
-      mesh.rotation.order = 'YXZ'; // stood up on X, then spun about the vertical
-      mesh.rotation.x = Math.PI / 2;
-      const y = heightAt(p.x, p.z) + ROUTE_COIN_R + 0.4;
-      mesh.position.set(p.x, y, p.z);
-      this.secret.add(mesh);
-      this.coins.push({ x: p.x, z: p.z, y, mesh, taken: false });
-    }
-
-    // The finish gate: two posts and a red banner.
-    const e = ROUTE_END;
-    const p = ROUTE[ROUTE.length - 2];
-    const yaw = Math.atan2(e.x - p.x, e.z - p.z);
+    // The finish: a big banner on two posts over the middle of the arena.
+    const cx = (ARENA.x0 + ARENA.x1) / 2;
+    const cz = (ARENA.z0 + ARENA.z1) / 2;
     this.gate = new THREE.Group();
-    this.gate.position.set(e.x, heightAt(e.x, e.z), e.z);
-    this.gate.rotation.y = yaw;
+    this.gate.position.set(cx, heightAt(cx, cz), ARENA.z1 - 6);
     for (const sx of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 7, 10), gateMat);
-      post.position.set(sx * (ROUTE_W + 0.5), 3.5, 0);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 14, 10), gateMat);
+      post.position.set(sx * 14, 7, 0);
       this.gate.add(post);
     }
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(ROUTE_W * 2 + 1, 2.2), new THREE.MeshBasicMaterial({ map: finishTexture(), side: THREE.DoubleSide }));
-    banner.position.set(0, 6.2, 0);
-    banner.rotation.y = Math.PI; // the text faces back down the route
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(28, 7), new THREE.MeshBasicMaterial({ map: finishTexture(), side: THREE.DoubleSide }));
+    banner.position.set(0, 12, 0);
+    banner.rotation.y = Math.PI; // the text faces the routes coming in from the north
     this.gate.add(banner);
     this.gate.visible = false;
     scene.add(this.gate);
   }
 
-  // The point `d` metres along the route.
-  along(d) {
-    for (let i = 0; i < ROUTE.length - 1; i++) {
-      const a = ROUTE[i];
-      const b = ROUTE[i + 1];
-      const len = Math.hypot(b.x - a.x, b.z - a.z);
-      if (d <= len) return { x: a.x + ((b.x - a.x) * d) / len, z: a.z + ((b.z - a.z) * d) / len };
-      d -= len;
-    }
-    return ROUTE_END;
-  }
-
   // Returns { coins, finished }: route coins picked up this frame, and whether the bike
-  // reached the finish. The coins can be picked up seen or not.
+  // reached the arena. The coins can be picked up seen or not.
   update(time, pos, rich) {
     this.secret.visible = rich;
-    this.gate.visible = rich || Math.hypot(pos.x - ROUTE_END.x, pos.z - ROUTE_END.z) < 45;
+    const cx = (ARENA.x0 + ARENA.x1) / 2;
+    this.gate.visible = rich || inArena(pos.x, pos.z, -80) || Math.abs(pos.x - cx) < 60 && pos.z < ARENA.z1 + 60;
     let coins = 0;
     for (const c of this.coins) {
       if (c.taken) continue;
@@ -481,7 +513,6 @@ export class RouteOverlay {
         coins++;
       }
     }
-    const finished = Math.hypot(pos.x - ROUTE_END.x, pos.z - ROUTE_END.z) < ROUTE_W + 1;
-    return { coins, finished };
+    return { coins, finished: inArena(pos.x, pos.z, 3) };
   }
 }

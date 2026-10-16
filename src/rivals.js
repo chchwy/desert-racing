@@ -298,6 +298,7 @@ export class Rivals {
         b.vel.z -= nz * jn;
         const hit = -closing;
         for (const body of [a, b]) body.landImpact = Math.max(body.landImpact, Math.min(1, hit / 18));
+        for (const body of [a, b]) body.shoved = 1.5; // speed from a shove is not speeding
         const key = i + ',' + j;
         if (hit > 3 && !this.cooldown.has(key)) {
           this.cooldown.set(key, 0.35);

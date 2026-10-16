@@ -109,6 +109,7 @@ export class Player {
     this.jumpTimer = 0; // hover field is off briefly after a jump
     this.bump = 0; // hardest hit into a solid since the caller last cleared it (m/s)
     this.speedCap = Infinity; // ground speed limit (m/s); the jail sets one
+    this.shoved = 0; // seconds since another bike pushed this one, counting down
     this.reset();
   }
 

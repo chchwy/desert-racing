@@ -142,6 +142,7 @@ export class Swarm {
     this.tgt = Array.from({ length: n }, (_, i) => ({ id: 0, team: 0, x: 0, y: 0, z: 0, gone: false, group: 'swarm', index: i }));
     this.box = new Array(n).fill(null); // { x0, x1, z0, z1 } for a locked-up rider
     this.bail = new Uint8Array(n); // coins picked up toward bail
+    this.crying = new Uint8Array(n); // losers in the arena, after a war is won
     this.speedCap = Infinity;
     this.coinSources = []; // [{ box, src }]: src has `coins` (live list) and take(coin)
     this.onBail = null;
@@ -424,6 +425,7 @@ export class Swarm {
             this.speed[i] *= 0.5;
             this.yaw[i] += (Math.random() - 0.5) * 1.5;
             p.landImpact = Math.max(p.landImpact, Math.min(1, -closing / 18));
+            p.shoved = 1.5; // speed from a shove is not speeding
             if (-closing > 3 && this.hitCooldown <= 0) {
               crash(0.3 + -closing / 20);
               this.hitCooldown = 0.3;
