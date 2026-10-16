@@ -185,11 +185,13 @@ const SHIELD = 10000; // coins that absorb one hit
 // In jail, coins are thrown into the pens from outside and pile up where they land; in
 // the penalty jail they drop from a machine over every room. Pick up BAIL of them to
 // get out: from the jail back to the first level, from the penalty jail back to the
-// jail. Locked up, nobody may go over SPEED_LIMIT: a speeder pays FINE coins, or, short
-// of them, lands in the penalty jail.
+// jail. Locked up, the bike tops out at JAIL_TOP; boosting can push it on to
+// SPEED_LIMIT, and reaching that is speeding: a speeder pays FINE coins, or, short of
+// them, lands in the penalty jail.
 const BAIL = 30;
-const SPEED_LIMIT = 20 / 3.6; // 20 km/h
-const FINE = 10000;
+const JAIL_TOP = 30 / 3.6; // 30 km/h
+const SPEED_LIMIT = 40 / 3.6; // 40 km/h, and the fine
+const FINE = 400000;
 let fineIn = 0;
 // The secret route out of the pen: seen with SEE_ROUTE coins, walkable without. Its big
 // coins are worth ROUTE_COIN each, and reaching its finish ends the war on the spot.
@@ -214,7 +216,7 @@ if (IN_JAIL) {
 const route = IN_JAIL ? new RouteOverlay(scene, heightAt) : null;
 if (LOCKED) {
   coinRain.mesh.visible = false;
-  swarm.speedCap = SPEED_LIMIT;
+  swarm.speedCap = JAIL_TOP;
   // Same rules for the swarm: thirty coins buy their way out, and a speeder in the jail
   // goes to the penalty jail.
   swarm.onBail = (i) => war.send(war.swarmBase + i, IN_JAIL ? 0 : JAIL);
@@ -510,12 +512,13 @@ function frame(timestamp) {
     }
     for (const c of swarm.extraCoins ?? []) c.update(dt, time, FAR_AWAY);
   }
-  // Locked up, over 20 km/h is speeding: pay 10,000, or go to the penalty jail.
-  // Nobody gets past the limit: the bike is held at it, and pushing past it is speeding.
+  // Locked up, reaching 40 km/h is speeding: pay 400,000, or go to the penalty jail.
+  // The bike is held at 30 km/h, or 40 while boosting; reaching 40 is speeding.
   fineIn -= dt;
-  const over = LOCKED && player.speed > SPEED_LIMIT;
-  if (over) {
-    const k = SPEED_LIMIT / player.speed;
+  const cap = player.boost > 0.3 ? SPEED_LIMIT : JAIL_TOP;
+  const over = LOCKED && player.speed >= SPEED_LIMIT - 0.05;
+  if (LOCKED && player.speed > cap) {
+    const k = cap / player.speed;
     player.vel.x *= k;
     player.vel.z *= k;
   }
@@ -599,7 +602,7 @@ function frame(timestamp) {
   });
   war.update(dt, STAGE);
   if (LOCKED && war.winner == null && bailing <= 0 && leaving <= 0) {
-    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 限速 20`;
+    reticleTag.textContent = `${IN_JAIL ? '出獄' : '回監牢'} ${Math.min(bailPicked, BAIL)} / ${BAIL} · 限速 30 · 40 罰 40 萬`;
     if (bailPicked >= BAIL) {
       war.send(0, IN_JAIL ? 0 : JAIL);
       showAlert(IN_JAIL ? `撿到 ${BAIL} 枚硬幣！出獄，從第一關重新開始` : `撿到 ${BAIL} 枚硬幣！回到監牢`, 2, 'warn');
