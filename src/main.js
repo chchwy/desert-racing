@@ -74,7 +74,7 @@ const terrain = new Terrain(scene, renderer);
 const player = new Player();
 terrain.update(player.pos, true);
 
-const bike = new Bike({ flag: TEAM_COLOR[FRIEND] }); // the player's team flies red
+const bike = new Bike({ flag: TEAM_COLOR[FRIEND], spikes: true }); // the player's team flies red; only the player has spikes
 scene.add(bike.root);
 
 // Tall grass streams around the bike on the prairie only.
@@ -186,6 +186,25 @@ war.onMove((id) => {
 war.save();
 
 const SHIELD = 10000; // coins that absorb one hit
+// The spikes on the back of the player's bike: a rider that runs into them pays
+// SPIKE_FINE to the player, or starts over on the first level without it. The swarm and
+// the rivals keep no coins, so for now they always start over. Racing levels only.
+const SPIKE_FINE = 35000000;
+const SPIKE_BACK = [1.2, 5]; // metres behind the player's center
+const SPIKE_SIDE = 1.9; // metres either side
+function spiked(x, z, f) {
+  const dx = x - player.pos.x;
+  const dz = z - player.pos.z;
+  const back = -(dx * f.x + dz * f.z);
+  const side = Math.abs(dx * f.z - dz * f.x);
+  return back > SPIKE_BACK[0] && back < SPIKE_BACK[1] && side < SPIKE_SIDE;
+}
+function prick(id) {
+  crash(1);
+  if (war.stage[id] === 0) placeRider(id); // already on the first level: back to a start spot
+  else war.send(id, 0);
+  showAlert('被尖刺刺到！沒有 3,500 萬，重新開始', 1.5, 'warn');
+}
 // In jail, coins are thrown into the pens from outside and pile up where they land; in
 // the penalty jail they drop from a machine over every room. Pick up BAIL of them to
 // get out: from the jail back to the first level, from the penalty jail back to the
@@ -626,6 +645,16 @@ function frame(timestamp) {
   if (armed && input.hit('KeyT') && gunIn <= 0) {
     weapons.fire(GUN, 0, FRIEND, player.pos.x, muzzleY, player.pos.z, player.yaw);
     gunIn = GUN_COOLDOWN;
+  }
+  // Riders that run into the player's back spikes.
+  if (!LOCKED && !dead && war.winner == null) {
+    const f = player.forward;
+    for (let i = 0; i < swarm.n; i++) {
+      if (swarm.state[i] === DRIVE && spiked(swarm.x[i], swarm.z[i], f)) prick(war.swarmBase + i);
+    }
+    rivals.list.forEach((r, i) => {
+      if (r.active && spiked(r.body.pos.x, r.body.pos.z, f)) prick(war.rivalBase + i);
+    });
   }
   // The exit at the end of the big-coin trail takes the rider back a level.
   if (exitGate) {

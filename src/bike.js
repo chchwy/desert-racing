@@ -16,6 +16,8 @@ const trimMat = new THREE.MeshStandardMaterial({ color: 0x1b1b24, metalness: 0.8
 const veinMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 0.35, 2.6) });
 const NOZZLE_COLOR = new THREE.Color(1.6, 2.6, 3.3);
 
+const spikeMat = new THREE.MeshStandardMaterial({ color: 0xd8dde4, metalness: 0.9, roughness: 0.25 });
+
 function mesh(geo, mat, parent, { p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1] } = {}) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(...p);
@@ -216,7 +218,7 @@ class Thruster {
 const flagGeo = mergeGeometries(flagParts());
 
 export class Bike {
-  constructor({ rider = buildCatRider, veinColor = null, lights = true, flag = null } = {}) {
+  constructor({ rider = buildCatRider, veinColor = null, lights = true, flag = null, spikes = false } = {}) {
     const veins = veinColor ? new THREE.MeshBasicMaterial({ color: veinColor }) : veinMat;
     this.root = new THREE.Group(); // position + yaw
     this.tilt = new THREE.Group(); // pitch / roll / hover bob
@@ -230,6 +232,21 @@ export class Bike {
     // seat spine
     mesh(new THREE.BoxGeometry(0.34, 0.12, 1.2), trimMat, body, { p: [0, 0.92, -0.35] });
 
+    // The player's bike only: a small pyramid point on the nose and a bunch of spikes
+    // out the back. A rider that runs into the spikes pays (see SPIKE_FINE in main.js).
+    if (spikes) {
+      const point = new THREE.ConeGeometry(0.28, 0.7, 4);
+      point.rotateX(Math.PI / 2);
+      mesh(point, spikeMat, body, { p: [0, 0.55, 1.55], r: [0, 0, Math.PI / 4] });
+      const spike = new THREE.ConeGeometry(0.09, 1.6, 8);
+      spike.rotateX(-Math.PI / 2);
+      for (const [x, y, ry, rx] of [
+        [0, 0.55, 0, 0], [0.25, 0.75, -0.2, 0.15], [-0.25, 0.75, 0.2, 0.15], [0.3, 0.35, -0.25, -0.15],
+        [-0.3, 0.35, 0.25, -0.15], [0, 0.95, 0, 0.3], [0, 0.2, 0, -0.3], [0.5, 0.6, -0.45, 0], [-0.5, 0.6, 0.45, 0],
+      ]) {
+        mesh(spike, spikeMat, body, { p: [x, y, -1.75], r: [rx, ry, 0] });
+      }
+    }
     // under-hull legs / skids
     for (const sx of [-1, 1]) {
       mesh(capsule(0.12, 0.8), hullMat, body, { p: [sx * 0.35, 0.05, 0.8], r: [0.6, 0, sx * 0.3] });
