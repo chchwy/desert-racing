@@ -44,6 +44,7 @@ const IDLE = {
   advance: false,
   prevLevel: false,
   nextLevel: false,
+  pause: false,
   lookX: 0,
   lookY: 0,
 };
@@ -68,6 +69,7 @@ export function readGamepad(pad) {
     advance: buttonDown(pad, 8), // View: spend 10,000 coins on the next level
     prevLevel: buttonDown(pad, 10), // L3: level picker back
     nextLevel: buttonDown(pad, 11), // R3: level picker forward
+    pause: buttonDown(pad, 16), // Guide: pause
     lookX: rx,
     lookY: ry,
   };

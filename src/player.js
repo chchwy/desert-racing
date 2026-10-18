@@ -40,6 +40,7 @@ const PAD_KEYS = [
   ['advance', 'KeyN'],
   ['prevLevel', 'PadLevelBack'],
   ['nextLevel', 'PadLevelForward'],
+  ['pause', 'Digit0'],
 ];
 
 export class Input {

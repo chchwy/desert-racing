@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { alarm } from './sound.js';
-import { nearestCoin } from './coins.js';
+import { nearestCoin, coinExit } from './coins.js';
 import { FRIEND, FOE } from './teams.js';
 
 // Arrows that float ahead of the bike and point at a target, like a compass card
@@ -113,7 +113,8 @@ export class CoinFinder {
   }
 
   update(time, player, alive) {
-    const c = alive ? nearestCoin(player.pos.x, player.pos.z, COIN_RANGE) : null;
+    // Once the trail's discs are gone, the arrow points at the exit.
+    const c = alive ? nearestCoin(player.pos.x, player.pos.z, COIN_RANGE) ?? coinExit : null;
     if (!c) {
       this.arrow.hide();
       return;

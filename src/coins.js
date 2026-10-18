@@ -1,11 +1,16 @@
 import * as THREE from 'three';
+import { LEVEL, LEVEL_ORDER } from './levels.js';
 
-const TOTAL = 100000;
+// From the second level on, the trail is EXIT_COINS discs long and ends at an exit
+// (coinExit) that takes the rider back a level. The first level has no exit.
+const EXIT_COINS = 6;
+const HAS_EXIT = LEVEL_ORDER.indexOf(LEVEL.id) > 0;
+const TOTAL = HAS_EXIT ? EXIT_COINS : 100000;
 // 2.8 km across: wider than the stretch of desert the fog used to show (~1.9 km),
 // and far larger than the cat (~1.9 m).
 export const COIN_R = 1400;
 const COIN_THICK = 120;
-const RIM_GAP = 480;
+const RIM_GAP = 100;
 const GAP = COIN_R * 2 + RIM_GAP;
 const AHEAD = COIN_R + 360; // near rim sits ahead of spawn; pyramids stay outside the disc
 const COIN_LIFT = COIN_R + 6; // bottom sits just above the sand
@@ -92,6 +97,16 @@ function xy(p) {
 }
 
 export const coinPath = buildPath();
+
+// The exit stands just past the last disc, along the trail.
+function exitAt() {
+  const a = coinPath[coinPath.length - 2];
+  const b = coinPath[coinPath.length - 1];
+  const d = Math.hypot(b.x - a.x, b.z - a.z);
+  const k = (COIN_R + 220) / d;
+  return { x: b.x + (b.x - a.x) * k, z: b.z + (b.z - a.z) * k };
+}
+export const coinExit = HAS_EXIT ? exitAt() : null;
 
 const EMPTY = [];
 let bucketSize = 0;

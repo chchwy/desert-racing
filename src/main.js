@@ -18,7 +18,8 @@ import { IceFinder, CoinFinder, TeamFinder } from './finder.js';
 import { CoinRain } from './coinrain.js';
 import { Swarm } from './swarm.js';
 import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
-import { formatCoinCount, coinCount, setCoins, addCoins } from './coins.js';
+import { formatCoinCount, coinCount, setCoins, addCoins, coinExit } from './coins.js';
+import { ExitGate } from './exit.js';
 import { War, JAIL, PENALTY } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
 import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
@@ -483,12 +484,26 @@ function respawn() {
   rivals.regroup();
 }
 
+// 0 (pad Guide) pauses and resumes: the world stands still, the last frame stays up.
+let paused = false;
+const exitGate = coinExit ? new ExitGate(scene, coinExit, heightAt) : null;
+
 function frame(timestamp) {
   timer.update(timestamp);
+  input.poll();
+  if (input.hit('Digit0')) {
+    paused = !paused;
+    if (paused) showAlert('暫停中 · 按 0 繼續', 1e9, 'warn');
+    else hud.alert.className = 'alert';
+  }
+  if (paused) {
+    timer.getDelta(); // drop the paused time
+    input.endFrame();
+    requestAnimationFrame(frame);
+    return;
+  }
   const dt = Math.min(timer.getDelta(), 1 / 20);
   const time = timer.getElapsed();
-
-  input.poll();
 
   if (input.hit('KeyC')) chase.cycle();
   // Backspace (pad Menu) resets, or starts a new war once one is won; R and T fire.
@@ -611,6 +626,15 @@ function frame(timestamp) {
   if (armed && input.hit('KeyT') && gunIn <= 0) {
     weapons.fire(GUN, 0, FRIEND, player.pos.x, muzzleY, player.pos.z, player.yaw);
     gunIn = GUN_COOLDOWN;
+  }
+  // The exit at the end of the big-coin trail takes the rider back a level.
+  if (exitGate) {
+    exitGate.update(time);
+    if (armed && !LOCKED && leaving <= 0 && exitGate.reached(player.pos)) {
+      war.stage[0] = STAGE - 1;
+      showAlert(`出口！回到第 ${STAGE} 關 ${LEVELS[LEVEL_ORDER[STAGE - 1]].name}`, 2, 'warn');
+      leaving = 1.2;
+    }
   }
   // N: with a full 10,000 coins, spend them to move on to the next level yourself.
   if (armed && !LOCKED && input.hit('KeyN') && coinCount() >= SHIELD && STAGE < LEVEL_ORDER.length - 1) {
