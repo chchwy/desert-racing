@@ -24,6 +24,8 @@ import { flagParts, FLAG_MOUNT, TEAM_COLOR, FRIEND, FOE } from './teams.js';
 const FAR = 420; // metres from the player before a bike respawns
 const SPAWN_MIN = 60;
 const SPAWN_MAX = 380;
+const START_MIN = 30; // nobody starts on top of the player
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 const HOVER = 1.1;
 const TURN = 1.8; // rad/s
 const HIT_R = 2.8; // player-to-bike contact distance
@@ -114,6 +116,8 @@ function flagGeometry() {
 export class Swarm {
   constructor(scene, count, player, coinRain, friends = Math.floor(count / 2)) {
     this.n = count;
+    this.started = false; // the first update ends the start placement
+    this.turn = Math.random() * Math.PI * 2;
     this.player = player;
     this.coinRain = coinRain;
     const n = count;
@@ -176,8 +180,16 @@ export class Swarm {
 
   spawn(i, anywhere) {
     const p = this.player.pos;
-    const a = Math.random() * Math.PI * 2;
-    const r = anywhere ? 8 + Math.sqrt(Math.random()) * SPAWN_MAX : SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+    let a = Math.random() * Math.PI * 2;
+    let r = anywhere ? 8 + Math.sqrt(Math.random()) * SPAWN_MAX : SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+    if (!this.started) {
+      // At the start of a level every rider gets its own spot, spread evenly over the
+      // same area (a sunflower spiral), as far from the others as the area allows. The
+      // spiral turns a random way each load, so no two starts are alike.
+      const t = (i + 0.5) / this.n;
+      r = Math.sqrt(START_MIN * START_MIN + t * (SPAWN_MAX * SPAWN_MAX - START_MIN * START_MIN));
+      a = this.turn + i * GOLDEN;
+    }
     this.x[i] = p.x + Math.cos(a) * r;
     this.z[i] = p.z + Math.sin(a) * r;
     this.ground[i] = heightAt(this.x[i], this.z[i]);
@@ -311,6 +323,7 @@ export class Swarm {
   }
 
   update(dt, time, cameraPos, playerAlive) {
+    this.started = true;
     const n = this.n;
     const p = this.player;
     this.slice = (this.slice + 1) % SLICES;

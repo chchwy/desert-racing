@@ -31,7 +31,8 @@ const VEINS = [
   new THREE.Color(0.3, 1.8, 2.8), new THREE.Color(2.6, 0.4, 1.4),
 ];
 // Start grid beside and behind the player: [left, ahead] in metres.
-const GRID = [[5, -3], [-5, -3], [9, -10], [-9, -10], [0, -14]];
+// Start spots, far apart from each other and from the player: [left, ahead] metres.
+const GRID = [[45, -25], [-45, -25], [95, -80], [-95, -80], [0, -140]];
 
 const BIKE_R = 1.5; // bikes touch when their centers are 2 * BIKE_R apart
 const BIKE_H = 2.2;
