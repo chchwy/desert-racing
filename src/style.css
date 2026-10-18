@@ -101,3 +101,9 @@ html, body {
 .burn.flash { animation: burn 1.6s ease-out forwards; }
 @keyframes burn { 0% { opacity: 1; } 60% { opacity: 0.7; } 100% { opacity: 0; } }
 .fps { position: absolute; right: 1vw; bottom: 1vh; font-size: 10px; opacity: 0.5; }
+
+/* Grassland: a tree dead ahead. The whole screen blinks red under a huge black NO. */
+.nono { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none; }
+.nono.show { display: flex; animation: nono-blink 0.32s steps(2, jump-none) infinite; }
+.nono b { font: 900 min(42vw, 60vh) / 1 Arial, Helvetica, sans-serif; color: #000; letter-spacing: -0.02em; }
+@keyframes nono-blink { from { background: rgba(255, 0, 0, 0.55); } to { background: rgba(255, 0, 0, 0); } }

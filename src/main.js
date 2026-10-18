@@ -367,6 +367,7 @@ const hud = {
   caught: document.getElementById('caught'),
   allies: document.getElementById('allies'),
   coins: document.getElementById('coins'),
+  nono: document.getElementById('nono'),
   coinCount: document.getElementById('coin-count'),
   alert: document.getElementById('alert'),
   burn: document.getElementById('burn'),
@@ -445,6 +446,53 @@ function frostBurst(spire) {
 // Volcano: touching lava, or a lava bomb, ends the run, and so does the seabed's glowing
 // life. The bike burns up, the screen flashes, and after a moment it respawns at the start.
 const DEATH_TIME = 1.6;
+// Grassland trees: with one dead ahead the screen blinks red under a huge black NO;
+// hitting one flips the bike, the rider nearest you takes every coin you have, and you
+// start over.
+const TREES = LEVEL.id === 'grassland';
+const TREE_WARN = 18; // metres ahead at a crawl; more at speed
+const TREE_HIT = 1.45; // metres past a trunk's radius that count as hitting it
+let flipped = false;
+function treeAhead(colliders) {
+  const f = player.forward;
+  const reach = Math.max(TREE_WARN, player.speed * 1.6);
+  for (const c of colliders) {
+    if (!c.tree) continue;
+    const dx = c.x - player.pos.x;
+    const dz = c.z - player.pos.z;
+    const ahead = dx * f.x + dz * f.z;
+    if (ahead > 0 && ahead < reach && Math.abs(dx * f.z - dz * f.x) < c.r + 1.6) return true;
+  }
+  return false;
+}
+function treeHit(colliders) {
+  return colliders.some((c) => c.tree && player.pos.y < c.top && Math.hypot(c.x - player.pos.x, c.z - player.pos.z) < c.r + TREE_HIT);
+}
+// The rider closest to you, of either team: { team } or null.
+function riderBeside() {
+  let best = null;
+  for (const team of [FRIEND, FOE]) {
+    for (const g of [swarm, rivals]) {
+      const c = g.nearest(team, player.pos, 400, 0);
+      if (c && (!best || c.d < best.d)) best = { ...c, team };
+    }
+  }
+  return best;
+}
+function crashIntoTree() {
+  const lost = coinCount();
+  const by = riderBeside();
+  const who = by ? `旁邊的${by.team === FRIEND ? '紅隊' : '藍隊'}車手` : '路過的車手';
+  if (lost > 0) {
+    setCoins(0);
+    hud.coins.textContent = formatCoinCount();
+  }
+  flipped = true;
+  const text = lost > 0 ? `撞到樹，翻車了！${formatCoinCount(lost)} 枚硬幣全被${who}拿走` : '撞到樹，翻車了！重新開始';
+  die(text);
+  showAlert(text, DEATH_TIME + 1.5, 'death result'); // the long line wraps
+  crash(1);
+}
 const GRACE = 2.5; // seconds after a respawn before bombs count
 let deadTimer = 0;
 let grace = GRACE;
@@ -460,7 +508,7 @@ function die(text) {
   hud.burn.classList.remove('flash');
   void hud.burn.offsetWidth;
   hud.burn.classList.add('flash');
-  bike.root.visible = false;
+  bike.root.visible = flipped; // a flipped bike stays in sight, upside down
   player.landImpact = 1;
   for (let i = 0; i < 40; i++) {
     const a = Math.random() * Math.PI * 2;
@@ -497,6 +545,7 @@ function respawn() {
   player.yaw = 0.9;
   player.landImpact = 0;
   bike.root.visible = true;
+  flipped = false;
   chase.initialized = false;
   chase.heading = player.yaw;
   grace = GRACE;
@@ -574,6 +623,10 @@ function frame(timestamp) {
   player.bump = 0;
   rivals.update(dt, time, camera.position, !dead);
   if (!dead && inLava()) die('墜入熔岩');
+  if (TREES) {
+    if (!dead && treeHit(colliders)) crashIntoTree();
+    hud.nono.classList.toggle('show', deadTimer <= 0 && treeAhead(colliders));
+  }
   if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
   terrain.update(player.pos);
   let gained = terrain.collectCoins(prevPos, player.pos);
@@ -752,6 +805,8 @@ function frame(timestamp) {
   // bike transform
   bike.root.position.copy(player.pos);
   bike.root.rotation.y = player.yaw;
+  // Rolled over onto its back after a tree.
+  bike.root.rotation.z = flipped ? Math.min(1, (DEATH_TIME - deadTimer) * 3) * Math.PI : 0;
   bike.tilt.rotation.set(player.pitch, 0, player.lean, 'YXZ');
   bike.tilt.position.y = -0.35 + Math.sin(time * 3.1) * 0.05 * (1 - Math.min(player.speed / 30, 1));
   bike.update(dt, time, { throttle: player.throttle, boost: player.boost, speed: player.speed, lean: player.lean });

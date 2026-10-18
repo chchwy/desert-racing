@@ -45,7 +45,7 @@ function acacia(b, colliders, rng, x, z, heightAt, scale = 1) {
   }
   const tone = LEAF_TONES[Math.floor(rng() * LEAF_TONES.length)];
   b.canopy.add(x, gy + h + 0.6, z, crownR, crownR * 0.2, crownR, rng() * 6, 0, 0, tone);
-  colliders.push({ x, z, r: r + 0.3, top: gy + fork });
+  colliders.push({ x, z, r: r + 0.3, top: gy + fork, tree: true });
 }
 
 // A kopje: granite boulders heaped on the plain.
