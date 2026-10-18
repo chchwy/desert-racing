@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { roadMask } from './road.js';
 import { fbm } from './noise.js';
 
 // The volcano level's big cone and its lava, shared by the height field (terrain.js)
@@ -27,6 +28,6 @@ export function lavaAt(x, z) {
     lava = Math.max(lava, smooth(THREE.MathUtils.clamp((s - 0.94) / 0.05, 0, 1)) * down);
   }
   if (r < VOLCANO.crater * 0.85) lava = 1;
-  return lava;
+  return lava * (1 - roadMask(x, z)); // the road stays dry
 }
 

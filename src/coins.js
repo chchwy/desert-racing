@@ -62,11 +62,10 @@ export function formatCoinCount(n = count) {
   return n.toLocaleString('zh-Hant');
 }
 
-// One bowed trail, starting ahead of the spawn and bending off the nose
-// so the first discs clear the pyramid group at (149, 118).
+// One straight trail along the road (src/road.js), starting ahead of the spawn.
 // The third component is the forward projection, strictly increasing with u.
 function pointAt(u) {
-  const lat = Math.sin(u * 0.0034) * 340 + Math.sin(u * 0.011 + Math.PI) * 28;
+  const lat = 0;
   const along = AHEAD + u;
   return [FX * along + RX * lat, FZ * along + RZ * lat, along];
 }

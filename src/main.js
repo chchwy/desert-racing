@@ -484,16 +484,16 @@ function respawn() {
   rivals.regroup();
 }
 
-// 0 (pad Guide) pauses and resumes: the world stands still, the last frame stays up.
+// L (pad Guide) pauses and resumes: the world stands still, the last frame stays up.
 let paused = false;
 const exitGate = coinExit ? new ExitGate(scene, coinExit, heightAt) : null;
 
 function frame(timestamp) {
   timer.update(timestamp);
   input.poll();
-  if (input.hit('Digit0')) {
+  if (input.hit('KeyL')) {
     paused = !paused;
-    if (paused) showAlert('暫停中 · 按 0 繼續', 1e9, 'warn');
+    if (paused) showAlert('暫停中 · 按 L 繼續', 1e9, 'warn');
     else hud.alert.className = 'alert';
   }
   if (paused) {

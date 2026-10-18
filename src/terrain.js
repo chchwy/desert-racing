@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { fbm, valueNoise } from './noise.js';
 import { LEVEL } from './levels.js';
+import { roadMask, onRoad, HAS_ROAD } from './road.js';
 import { lavaAt, VOLCANO } from './lava.js';
 import { buildChunkProps as buildDesertProps, pyramidFace } from './props.js';
 import { buildJungleProps } from './jungle.js';
@@ -84,6 +85,7 @@ function volcanoHeight(x, z) {
     const rim = H * (1 - CR / R) ** 1.8;
     cone = r > CR ? H * (1 - r / R) ** 1.8 : rim - CD * (1 - (r / CR) ** 2);
   }
+  cone *= 1 - roadMask(x, z); // the road cuts straight through the cone
   const plain = (rugged + swell) * (1 - smooth(THREE.MathUtils.clamp(1 - r / R, 0, 1)) * 0.7);
   const lumps = (fbm(x * 0.035, z * 0.035, 2) - 0.5) * 1.2;
   return plain + cone + lumps - lavaAt(x, z) * 4;
@@ -105,7 +107,8 @@ function terrace(h, step) {
 
 function seabedHeight(x, z) {
   const calm = smooth(THREE.MathUtils.clamp((Math.hypot(x, z) - 50) / 100, 0, 1))
-    * smooth(THREE.MathUtils.clamp((Math.hypot(x - 149, z - 118) - 70) / 120, 0, 1));
+    * smooth(THREE.MathUtils.clamp((Math.hypot(x - 149, z - 118) - 70) / 120, 0, 1))
+    * (1 - roadMask(x, z)); // no trench or seamount on the road
   const shelf = (fbm(x * 0.0007 + 8.1, z * 0.0007 + 2.2, 3) - 0.5) * 110;
   const swell = fbm(x * 0.003 + 4.4, z * 0.003 + 0.6, 3) * 16;
   const region = smooth(THREE.MathUtils.clamp((fbm(x * 0.0006 + 3.3, z * 0.0006 + 7.1, 2) - 0.45) / 0.2, 0, 1));
@@ -302,6 +305,45 @@ function breakProp(props, b) {
   props.colliders = props.colliders.filter((c) => !b.colliders.includes(c));
 }
 
+// Empty the road: hide every prop piece that reaches onto it and drop its colliders,
+// slopes, hazards and breakables. A piece reaches the road when its bounding sphere does.
+const _m = new THREE.Matrix4();
+const _p = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _s = new THREE.Vector3();
+function clearRoad(props) {
+  props.group.updateMatrixWorld(true);
+  const hide = [];
+  props.group.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry;
+    if (!g.boundingSphere) g.computeBoundingSphere();
+    const r0 = g.boundingSphere.radius;
+    if (o.isInstancedMesh) {
+      let changed = false;
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, _m);
+        _m.premultiply(o.matrixWorld).decompose(_p, _q, _s);
+        if (onRoad(_p.x, _p.z, r0 * Math.max(_s.x, _s.z) * 0.8)) {
+          o.setMatrixAt(i, ZERO);
+          changed = true;
+        }
+      }
+      if (changed) o.instanceMatrix.needsUpdate = true;
+    } else {
+      o.getWorldPosition(_p);
+      o.getWorldScale(_s);
+      if (onRoad(_p.x, _p.z, r0 * Math.max(_s.x, _s.z) * 0.8)) hide.push(o);
+    }
+  });
+  for (const o of hide) o.visible = false;
+  props.colliders = props.colliders.filter((c) => !onRoad(c.x, c.z, c.r));
+  if (props.slopes) props.slopes = props.slopes.filter((sl) => !onRoad(sl.x, sl.z, (sl.plinthSide ?? sl.side ?? 40) * 0.75));
+  if (props.hazards) props.hazards = props.hazards.filter((h) => !onRoad(h.x, h.z, h.r));
+  for (const b of props.breakables) if (onRoad(b.x, b.z, 2)) breakProp(props, b);
+  if (props.vent && onRoad(props.vent.x ?? 149, props.vent.z ?? 118, props.vent.r ?? 30)) props.vent = null;
+}
+
 // Steeper slopes take the shade color, flats and crests the light one.
 function groundColor(x, z, nrm, c, lava = LAVA ? lavaAt(x, z) : 0, y = 0) {
   const { base, crest, shade, steep = [3, 0.2, 0.7] } = LEVEL.ground;
@@ -421,6 +463,7 @@ export class Terrain {
 
     const props = buildChunkProps(cx, cz, CHUNK_SIZE, heightAt);
     props.breakables ??= [];
+    if (HAS_ROAD) clearRoad(props);
     const key = this.key(cx, cz);
     for (const b of props.breakables) {
       if (this.broken.has(key + ':' + b.id)) breakProp(props, b);
