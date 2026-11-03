@@ -22,9 +22,9 @@ import { flagParts, FLAG_MOUNT, TEAM_COLOR, FRIEND, FOE } from './teams.js';
 // fires; now and then one speeds anyway and `onSpeed(i)` fires.
 
 const FAR = 420; // metres from the player before a bike respawns
-const SPAWN_MIN = 60;
+const SPAWN_MIN = 120;
 const SPAWN_MAX = 380;
-const START_MIN = 30; // nobody starts on top of the player
+const START_MIN = 80; // nobody starts on top of the player
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 const HOVER = 1.1;
 const TURN = 1.8; // rad/s
@@ -243,12 +243,12 @@ export class Swarm {
     }
     const friend = this.team[i] === FRIEND;
     const roll = Math.random();
-    // Friends mostly ride with the player; foes roam, chase and grab coins more.
+    // Most keep to themselves: friends ride around the player at a distance, foes mostly roam.
     this.mode[i] = friend
-      ? (roll < 0.65 ? ORBIT : roll < 0.85 ? ROAM : COIN)
-      : (roll < 0.35 ? ORBIT : roll < 0.65 ? ROAM : roll < 0.8 ? CHASE : COIN);
+      ? (roll < 0.4 ? ORBIT : roll < 0.9 ? ROAM : COIN)
+      : (roll < 0.2 ? ORBIT : roll < 0.85 ? ROAM : roll < 0.9 ? CHASE : COIN);
     this.timer[i] = 4 + Math.random() * 8;
-    this.orbitR[i] = friend ? 10 + Math.random() * 50 : 12 + Math.random() * 110;
+    this.orbitR[i] = friend ? 80 + Math.random() * 140 : 120 + Math.random() * 180;
     this.orbitDir[i] = Math.random() < 0.5 ? -1 : 1;
     this.orbitA[i] = Math.atan2(this.z[i] - this.player.pos.z, this.x[i] - this.player.pos.x);
     this.coin[i] = null;

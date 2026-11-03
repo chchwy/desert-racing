@@ -55,8 +55,13 @@ export class War {
       this.kills = saved.kills ?? 0;
       this.spines = saved.spines ?? 0;
     } else {
+      // A different number of riders starts the others over, but the player keeps its place.
       this.stage.fill(0);
+      this.stage[0] = saved?.stage?.charCodeAt?.(0) - 48 || 0;
       this.winner = null;
+      this.coins = saved?.coins ?? 0;
+      this.kills = saved?.kills ?? 0;
+      this.spines = saved?.spines ?? 0;
     }
   }
 
