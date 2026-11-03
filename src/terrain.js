@@ -11,6 +11,7 @@ import { buildVolcanoProps } from './volcano.js';
 import { buildReefProps } from './reef.js';
 import { buildJailProps } from './jail.js';
 import { buildPenaltyProps } from './penalty.js';
+import { addCacti } from './cactus.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -464,6 +465,7 @@ export class Terrain {
     const props = buildChunkProps(cx, cz, CHUNK_SIZE, heightAt);
     props.breakables ??= [];
     if (HAS_ROAD) clearRoad(props);
+    if (LEVEL.cacti) props.cacti = addCacti(props, cx, cz, CHUNK_SIZE, heightAt);
     const key = this.key(cx, cz);
     for (const b of props.breakables) {
       if (this.broken.has(key + ':' + b.id)) breakProp(props, b);
@@ -594,6 +596,29 @@ export class Terrain {
           this.broken.add(key + ':' + b.id);
         }
         for (const b of hits) if (chunk.props.breakables.includes(b)) breakProp(chunk.props, b);
+      }
+    }
+    return hits;
+  }
+
+  // The cacti the bike's path from prev to next touches, in the 3x3 chunks around next.
+  cactiTouching(prev, next) {
+    const hits = [];
+    const cx = Math.floor(next.x / CHUNK_SIZE);
+    const cz = Math.floor(next.z / CHUNK_SIZE);
+    const sx = next.x - prev.x;
+    const sz = next.z - prev.z;
+    const len2 = sx * sx + sz * sz;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const cacti = this.chunks.get(this.key(cx + dx, cz + dz))?.props.cacti;
+        if (!cacti) continue;
+        for (const c of cacti) {
+          if (next.y > c.top) continue;
+          const t = len2 > 1e-9 ? THREE.MathUtils.clamp(((c.x - prev.x) * sx + (c.z - prev.z) * sz) / len2, 0, 1) : 0;
+          const reach = c.r + 1.3; // the bike's padding
+          if ((prev.x + sx * t - c.x) ** 2 + (prev.z + sz * t - c.z) ** 2 < reach * reach) hits.push(c);
+        }
       }
     }
     return hits;

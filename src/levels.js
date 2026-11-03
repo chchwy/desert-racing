@@ -9,6 +9,7 @@ const srgb = (r, g, b) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace
 export const LEVELS = {
   desert: {
     id: 'desert',
+    cacti: true,
     name: '沙漠',
     title: 'Desert Rider — prototype',
     eyebrow: 'DESERT RIDER / BATTLE PROTOTYPE',

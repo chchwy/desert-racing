@@ -59,6 +59,8 @@ Bike space is **+Z forward, +Y up, +X to the rider's left**. This is not three.j
 
 ## Levels
 
+The desert has cacti (`LEVEL.cacti`, `src/cactus.js`), placed on their own seed after the chunk's props. They have no collider: `Terrain.cactiTouching` sweeps the bike's path, and each new touch makes `stickSpines` in `main.js` add one spine (`war.spines`, saved; drawn on the bike by `Bike.setSpines`; 尖刺 in the HUD). A cactus gives another only after the bike has left it. `SPINES_TO_MOVE` (30) sends the player on a level through `war.hit`.
+
 `LEVEL` is fixed for the page load. `heightAt`, the chunk props, the sky, the fog and the dust tint all read it at import time, so the picker (HUD buttons, number keys) reloads the page with `?level=` instead of swapping the world in place. Keep the other URL flags when switching (`switchLevel` does).
 
 The rainforest uses `jungleHeight` and `buildJungleProps`; the desert code paths are unchanged. Trees, palms, ferns and boulders are one `InstancedMesh` per kind per chunk, and `disposeChunk` disposes them. Trunks, palms, boulders and the temple shrine have colliders. Ferns and canopy do not. Jungle placement seeds from `hashSeed(cx + 3000, cz - 3000)`, separate from the desert seed.
@@ -95,6 +97,7 @@ The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.
 | `src/bike.js` | Hover-bike from primitives. Thrusters. Mounts the rider |
 | `src/riders/cat.js` | Cat GLB, seat fit, wind shader |
 | `src/riders/animals.js` | Primitive animal riders for the rivals |
+| `src/cactus.js` | Desert cacti |
 | `src/rivals.js` | Rival AI racers, bike-to-bike collisions |
 | `src/swarm.js` | Thousands of instanced animal bikers around the player |
 | `src/coinrain.js` | Small coins raining around the big discs |

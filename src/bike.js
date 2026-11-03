@@ -18,6 +18,33 @@ const NOZZLE_COLOR = new THREE.Color(1.6, 2.6, 3.3);
 
 const spikeMat = new THREE.MeshStandardMaterial({ color: 0xd8dde4, metalness: 0.9, roughness: 0.25 });
 
+// Cactus spines stuck in the player's hull, one more shown per spine (Bike.setSpines).
+const MAX_STUCK = 30;
+function stuckSpines() {
+  const geo = new THREE.ConeGeometry(0.05, 0.8, 4);
+  geo.translate(0, 0.4, 0);
+  const spines = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xf2ecc8, roughness: 0.6 }), MAX_STUCK);
+  const up = new THREE.Vector3(0, 1, 0);
+  const out = new THREE.Vector3();
+  const pos = new THREE.Vector3();
+  const turn = new THREE.Quaternion();
+  const one = new THREE.Vector3(1, 1, 1);
+  const m = new THREE.Matrix4();
+  for (let i = 0; i < MAX_STUCK; i++) {
+    // Golden-angle spiral over the bike and rider, so each new spine lands somewhere new.
+    const along = 1 - (2 * (i + 0.5)) / MAX_STUCK;
+    const a = i * 2.39996;
+    out.set(Math.cos(a), Math.abs(Math.sin(a)) + 0.2, along).normalize();
+    pos.set(Math.cos(a) * 0.7, 0.6 + Math.abs(Math.sin(a)) * 0.9, along * 1.4);
+    turn.setFromUnitVectors(up, out);
+    spines.setMatrixAt(i, m.compose(pos, turn, one));
+  }
+  spines.count = 0;
+  spines.castShadow = true;
+  spines.frustumCulled = false;
+  return spines;
+}
+
 function mesh(geo, mat, parent, { p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1] } = {}) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(...p);
@@ -246,6 +273,8 @@ export class Bike {
       ]) {
         mesh(spike, spikeMat, body, { p: [x, y, -1.75], r: [rx, ry, 0] });
       }
+      this.stuckSpines = stuckSpines();
+      body.add(this.stuckSpines);
     }
     // under-hull legs / skids
     for (const sx of [-1, 1]) {
@@ -286,6 +315,10 @@ export class Bike {
         o.castShadow = true;
       }
     });
+  }
+
+  setSpines(n) {
+    this.stuckSpines.count = Math.min(n, MAX_STUCK);
   }
 
   update(dt, time, s) {

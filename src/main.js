@@ -366,6 +366,7 @@ const hud = {
   kills: document.getElementById('kills'),
   caught: document.getElementById('caught'),
   allies: document.getElementById('allies'),
+  spines: document.getElementById('spines'),
   coins: document.getElementById('coins'),
   nono: document.getElementById('nono'),
   coinCount: document.getElementById('coin-count'),
@@ -540,6 +541,31 @@ function playerShot(kind) {
   leaving = 1.6;
 }
 
+// Driving into a cactus sticks one spine on the bike; a cactus gives another only after
+// the bike has left it. Enough of them push you on to the next level.
+const SPINES_TO_MOVE = 30;
+let touchingCacti = [];
+bike.setSpines(war.spines);
+hud.spines.textContent = war.spines;
+hud.spines.parentElement.hidden = !LEVEL.cacti;
+function stickSpines(touching) {
+  for (const c of touching) {
+    if (touchingCacti.includes(c) || leaving > 0) continue;
+    war.spines++;
+    bike.setSpines(war.spines);
+    hud.spines.textContent = war.spines;
+    crash(0.2);
+    if (war.spines >= SPINES_TO_MOVE) {
+      war.spines = 0;
+      const to = war.hit(0);
+      showAlert(`${SPINES_TO_MOVE} 根尖刺！前往第 ${to + 1} 關 ${LEVELS[LEVEL_ORDER[to]].name}`, 2, 'warn');
+      leaving = 1.6;
+    }
+    war.save();
+  }
+  touchingCacti = touching;
+}
+
 function respawn() {
   player.reset();
   player.yaw = 0.9;
@@ -628,6 +654,7 @@ function frame(timestamp) {
     hud.nono.classList.toggle('show', deadTimer <= 0 && treeAhead(colliders));
   }
   if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
+  if (LEVEL.cacti && !dead && war.winner == null) stickSpines(terrain.cactiTouching(prevPos, player.pos));
   terrain.update(player.pos);
   let gained = terrain.collectCoins(prevPos, player.pos);
   if (!LOCKED) gained += coinRain.update(dt, time, player, !dead);
@@ -873,6 +900,7 @@ function frame(timestamp) {
     // 擊破: foes you shot; 捕獲: foes in jail; 夥伴: friends still free.
     const c = war.counts();
     hud.kills.textContent = war.kills;
+    hud.spines.textContent = war.spines;
     hud.caught.textContent = c[FOE].jailed;
     hud.allies.textContent = c[FRIEND].free;
     hud.coins.textContent = formatCoinCount();

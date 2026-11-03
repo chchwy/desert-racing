@@ -34,6 +34,7 @@ export class War {
     this.winner = null;
     this.coins = 0; // the player's coin count, carried across level reloads
     this.kills = 0; // foes the player has shot
+    this.spines = 0; // cactus spines stuck on the player's bike
     this.load();
     this.acc = 0;
     this.saveIn = 2;
@@ -52,6 +53,7 @@ export class War {
       this.winner = saved.winner ?? null;
       this.coins = saved.coins ?? 0;
       this.kills = saved.kills ?? 0;
+      this.spines = saved.spines ?? 0;
     } else {
       this.stage.fill(0);
       this.winner = null;
@@ -62,7 +64,7 @@ export class War {
     let s = '';
     for (let i = 0; i < this.n; i++) s += String.fromCharCode(48 + this.stage[i]);
     try {
-      localStorage.setItem(KEY, JSON.stringify({ n: this.n, stage: s, winner: this.winner, coins: this.coins, kills: this.kills }));
+      localStorage.setItem(KEY, JSON.stringify({ n: this.n, stage: s, winner: this.winner, coins: this.coins, kills: this.kills, spines: this.spines }));
     } catch {
       // private window or blocked storage: the war just does not carry over
     }
@@ -73,6 +75,7 @@ export class War {
     this.winner = null;
     this.coins = 0;
     this.kills = 0;
+    this.spines = 0;
     this.save();
   }
 
