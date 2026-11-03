@@ -59,6 +59,7 @@ export class Batch {
     mesh.receiveShadow = true;
     mesh.computeBoundingSphere();
     group.add(mesh);
+    return mesh;
   }
 }
 

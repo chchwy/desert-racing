@@ -59,7 +59,7 @@ Bike space is **+Z forward, +Y up, +X to the rider's left**. This is not three.j
 
 ## Levels
 
-The desert has cacti (`LEVEL.cacti`, `src/cactus.js`), placed on their own seed after the chunk's props. They have no collider: `Terrain.cactiTouching` sweeps the bike's path, and `stickSpines` in `main.js` adds each cactus's id to `war.spines` once (saved, so a cactus never gives a second spine; drawn on the bike by `Bike.setSpines`; 尖刺 in the HUD). `SPINES_FULL` (30) empties the list and restarts the player through `die`, coins kept.
+The desert has cacti (`LEVEL.cacti`, `src/cactus.js`), placed on their own seed after the chunk's props. They have no collider: `Terrain.cactiTouching` sweeps the bike's path, and `stickSpines` in `main.js` adds a green cactus's id to `war.spines` (saved; drawn on the bike by `Bike.setSpines`; 尖刺 in the HUD) and withers it yellow (`Terrain.wither`). Swarm bikers and rivals wither what they touch too (`Terrain.witherAt`), and a yellow cactus gives nothing. `Terrain.withered` keeps them yellow when a chunk streams back; only the player's are saved. `SPINES_FULL` (30) empties the list, turns every cactus green and restarts the player through `die`, coins kept.
 
 `LEVEL` is fixed for the page load. `heightAt`, the chunk props, the sky, the fog and the dust tint all read it at import time, so the picker (HUD buttons, number keys) reloads the page with `?level=` instead of swapping the world in place. Keep the other URL flags when switching (`switchLevel` does).
 

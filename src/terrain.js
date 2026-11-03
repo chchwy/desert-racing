@@ -11,7 +11,7 @@ import { buildVolcanoProps } from './volcano.js';
 import { buildReefProps } from './reef.js';
 import { buildJailProps } from './jail.js';
 import { buildPenaltyProps } from './penalty.js';
-import { addCacti } from './cactus.js';
+import { addCacti, setWithered } from './cactus.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -392,6 +392,8 @@ export class Terrain {
     // Breakable props that have been smashed, as `chunkKey:id`, so they stay gone
     // when their chunk streams out and back in.
     this.broken = new Set();
+    // Cacti that have been hit, by id, so they stay yellow when their chunk streams back.
+    this.withered = new Set();
   }
 
   key(cx, cz) {
@@ -465,7 +467,10 @@ export class Terrain {
     const props = buildChunkProps(cx, cz, CHUNK_SIZE, heightAt);
     props.breakables ??= [];
     if (HAS_ROAD) clearRoad(props);
-    if (LEVEL.cacti) props.cacti = addCacti(props, cx, cz, CHUNK_SIZE, heightAt);
+    if (LEVEL.cacti) {
+      props.cacti = addCacti(props, cx, cz, CHUNK_SIZE, heightAt);
+      for (const c of props.cacti) if (this.withered.has(c.id)) setWithered(c, true);
+    }
     const key = this.key(cx, cz);
     for (const b of props.breakables) {
       if (this.broken.has(key + ':' + b.id)) breakProp(props, b);
@@ -599,6 +604,34 @@ export class Terrain {
       }
     }
     return hits;
+  }
+
+  wither(c) {
+    this.withered.add(c.id);
+    setWithered(c, true);
+  }
+
+  // Withers the green cacti a rider at (x, z) is touching.
+  witherAt(x, z) {
+    const cacti = this.chunks.get(this.key(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)))?.props.cacti;
+    if (!cacti) return;
+    for (const c of cacti) {
+      if (!c.withered && (x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r) this.wither(c);
+    }
+  }
+
+  witherIds(ids) {
+    for (const id of ids) this.withered.add(id);
+    for (const chunk of this.chunks.values()) {
+      for (const c of chunk.props.cacti ?? []) if (this.withered.has(c.id)) setWithered(c, true);
+    }
+  }
+
+  reviveCacti() {
+    this.withered.clear();
+    for (const chunk of this.chunks.values()) {
+      for (const c of chunk.props.cacti ?? []) if (c.withered) setWithered(c, false);
+    }
   }
 
   // The cacti the bike's path from prev to next touches, in the 3x3 chunks around next.

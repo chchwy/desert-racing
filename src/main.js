@@ -541,18 +541,22 @@ function playerShot(kind) {
   leaving = 1.6;
 }
 
-// Each cactus sticks one spine on the bike, once. A bike full of them starts you over.
+// A green cactus sticks a spine on the bike and withers; a yellow one, hit before by you or
+// anyone else, gives nothing. A bike full of spines starts you over, with every cactus green.
 const SPINES_FULL = 30;
 bike.setSpines(war.spines.length);
 hud.spines.textContent = war.spines.length;
 hud.spines.parentElement.hidden = !LEVEL.cacti;
+terrain.witherIds(war.spines);
 function stickSpines(touching) {
   for (const c of touching) {
-    if (war.spines.includes(c.id) || leaving > 0 || deadTimer > 0) continue;
+    if (c.withered || leaving > 0 || deadTimer > 0) continue;
+    terrain.wither(c);
     war.spines.push(c.id);
     crash(0.2);
     if (war.spines.length >= SPINES_FULL) {
       war.spines = [];
+      terrain.reviveCacti();
       die(`車上插滿 ${SPINES_FULL} 根刺！重新開始`);
     }
     bike.setSpines(war.spines.length);
@@ -757,6 +761,7 @@ function frame(timestamp) {
   }
   rivals.targets(weapons.targets);
   swarm.targets(weapons.targets);
+  if (LEVEL.cacti) for (const t of weapons.targets) if (t !== playerTarget) terrain.witherAt(t.x, t.z);
   weapons.update(dt, camera.position, (t, kind, shooter) => {
     if (t.id === 0) {
       playerShot(kind);
