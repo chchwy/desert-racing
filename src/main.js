@@ -290,6 +290,12 @@ function startArena(winner) {
   swarm.onSpeed = null;
 }
 
+// Closing or reloading the page keeps the coins picked up since the last level change.
+window.addEventListener('pagehide', () => {
+  war.coins = coinCount();
+  war.save();
+});
+
 function goToStage(stage) {
   war.coins = coinCount();
   war.save();
