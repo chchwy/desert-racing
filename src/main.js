@@ -541,29 +541,24 @@ function playerShot(kind) {
   leaving = 1.6;
 }
 
-// Driving into a cactus sticks one spine on the bike; a cactus gives another only after
-// the bike has left it. Enough of them push you on to the next level.
-const SPINES_TO_MOVE = 30;
-let touchingCacti = [];
-bike.setSpines(war.spines);
-hud.spines.textContent = war.spines;
+// Each cactus sticks one spine on the bike, once. A bike full of them starts you over.
+const SPINES_FULL = 30;
+bike.setSpines(war.spines.length);
+hud.spines.textContent = war.spines.length;
 hud.spines.parentElement.hidden = !LEVEL.cacti;
 function stickSpines(touching) {
   for (const c of touching) {
-    if (touchingCacti.includes(c) || leaving > 0) continue;
-    war.spines++;
-    bike.setSpines(war.spines);
-    hud.spines.textContent = war.spines;
+    if (war.spines.includes(c.id) || leaving > 0 || deadTimer > 0) continue;
+    war.spines.push(c.id);
     crash(0.2);
-    if (war.spines >= SPINES_TO_MOVE) {
-      war.spines = 0;
-      const to = war.hit(0);
-      showAlert(`${SPINES_TO_MOVE} 根尖刺！前往第 ${to + 1} 關 ${LEVELS[LEVEL_ORDER[to]].name}`, 2, 'warn');
-      leaving = 1.6;
+    if (war.spines.length >= SPINES_FULL) {
+      war.spines = [];
+      die(`車上插滿 ${SPINES_FULL} 根刺！重新開始`);
     }
+    bike.setSpines(war.spines.length);
+    hud.spines.textContent = war.spines.length;
     war.save();
   }
-  touchingCacti = touching;
 }
 
 function respawn() {
@@ -900,7 +895,7 @@ function frame(timestamp) {
     // 擊破: foes you shot; 捕獲: foes in jail; 夥伴: friends still free.
     const c = war.counts();
     hud.kills.textContent = war.kills;
-    hud.spines.textContent = war.spines;
+    hud.spines.textContent = war.spines.length;
     hud.caught.textContent = c[FOE].jailed;
     hud.allies.textContent = c[FRIEND].free;
     hud.coins.textContent = formatCoinCount();

@@ -70,7 +70,7 @@ function cactusGeometry() {
 const cactusGeo = cactusGeometry();
 const cactusMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
 
-// Adds this chunk's cacti to its props group and returns them as { x, z, r, top }.
+// Adds this chunk's cacti to its props group and returns them as { id, x, z, r, top }.
 export function addCacti(props, cx, cz, size, heightAt) {
   const rng = mulberry32(hashSeed(cx + 21000, cz - 21000));
   const batch = new Batch(cactusGeo, cactusMat);
@@ -85,7 +85,7 @@ export function addCacti(props, cx, cz, size, heightAt) {
     if (Math.hypot(heightAt(x + 2, z) - heightAt(x - 2, z), heightAt(x, z + 2) - heightAt(x, z - 2)) / 4 > STEEP) continue;
     const y = heightAt(x, z);
     batch.add(x, y - 0.1, z, s, s, s, yaw);
-    cacti.push({ x, z, r: 1.1 * s, top: y + HEIGHT * s });
+    cacti.push({ id: `${cx}:${cz}:${i}`, x, z, r: 1.1 * s, top: y + HEIGHT * s });
   }
   batch.build(props.group);
   return cacti;

@@ -34,7 +34,7 @@ export class War {
     this.winner = null;
     this.coins = 0; // the player's coin count, carried across level reloads
     this.kills = 0; // foes the player has shot
-    this.spines = 0; // cactus spines stuck on the player's bike
+    this.spines = []; // ids of the cacti whose spine is stuck on the player's bike
     this.load();
     this.acc = 0;
     this.saveIn = 2;
@@ -53,7 +53,6 @@ export class War {
       this.winner = saved.winner ?? null;
       this.coins = saved.coins ?? 0;
       this.kills = saved.kills ?? 0;
-      this.spines = saved.spines ?? 0;
     } else {
       // A different number of riders starts the others over, but the player keeps its place.
       this.stage.fill(0);
@@ -61,8 +60,8 @@ export class War {
       this.winner = null;
       this.coins = saved?.coins ?? 0;
       this.kills = saved?.kills ?? 0;
-      this.spines = saved?.spines ?? 0;
     }
+    this.spines = Array.isArray(saved?.spines) ? saved.spines : [];
   }
 
   save() {
@@ -80,7 +79,7 @@ export class War {
     this.winner = null;
     this.coins = 0;
     this.kills = 0;
-    this.spines = 0;
+    this.spines = [];
     this.save();
   }
 
