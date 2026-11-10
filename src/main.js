@@ -73,6 +73,7 @@ scene.add(sky);
 
 const terrain = new Terrain(scene, renderer);
 const player = new Player();
+player.flyer = true;
 terrain.update(player.pos, true);
 
 const bike = new Bike({ flag: TEAM_COLOR[FRIEND], spikes: true }); // the player's team flies red; only the player has spikes

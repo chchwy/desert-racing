@@ -10,6 +10,11 @@ const ACCEL = 26;
 const BOOST_ACCEL = 42;
 const VMAX = 58; // ~210 km/h
 const VMAX_BOOST = 72; // ~260 km/h
+// A flyer (the player's bike) keeps boosting as long as E is held, up to FLY_TOP, and from
+// FLY_FROM on it lifts off and flies low, up to FLY_H over the ground.
+const FLY_TOP = 300 / 3.6;
+const FLY_FROM = 270 / 3.6;
+const FLY_H = 5;
 
 const tmpN = new THREE.Vector3();
 
@@ -111,6 +116,8 @@ export class Player {
     this.bump = 0; // hardest hit into a solid since the caller last cleared it (m/s)
     this.speedCap = Infinity; // ground speed limit (m/s); the jail sets one
     this.shoved = 0; // seconds since another bike pushed this one, counting down
+    this.flyer = false;
+    this.lift = 0; // 0..1: how far a flyer has risen toward FLY_H
     this.reset();
   }
 
@@ -139,7 +146,7 @@ export class Player {
     const wantBoost = (input.down('KeyE') || pad.boost) && fwdIn > 0.15 && this.energy > 0.02;
 
     // boost energy
-    if (wantBoost) this.energy = Math.max(0, this.energy - dt * 0.28);
+    if (wantBoost && !this.flyer) this.energy = Math.max(0, this.energy - dt * 0.28);
     else this.energy = Math.min(1, this.energy + dt * 0.12);
     this.boost = THREE.MathUtils.damp(this.boost, wantBoost ? 1 : 0, 6, dt);
     this.throttle = THREE.MathUtils.damp(this.throttle, fwdIn, 5, dt);
@@ -154,7 +161,11 @@ export class Player {
     this.yaw += this.yawRate * dt;
 
     // thrust & drag along the ground plane
-    const vmax = wantBoost ? VMAX_BOOST : VMAX;
+    const vmax = wantBoost ? (this.flyer ? FLY_TOP : VMAX_BOOST) : VMAX;
+    const flying = this.flyer && wantBoost ? THREE.MathUtils.smoothstep(speed, FLY_FROM, FLY_TOP * 0.97) : 0;
+    this.lift = THREE.MathUtils.damp(this.lift, flying, 1.5, dt);
+    const hover = HOVER + this.lift * FLY_H;
+    const field = FIELD + this.lift * FLY_H;
     const accel = wantBoost ? BOOST_ACCEL : ACCEL;
     const thrust = this.airborne ? 0.25 : 1;
     this.vel.addScaledVector(fwd, (fwdIn * accel - back * 26) * thrust * dt);
@@ -193,11 +204,11 @@ export class Player {
     const slopeVy = -(tmpN.x * this.vel.x + tmpN.z * this.vel.z) / Math.max(tmpN.y, 0.3);
     let ay = -G_AIR;
     this.jumpTimer = Math.max(0, this.jumpTimer - dt);
-    if (this.gap < FIELD && this.jumpTimer === 0) {
-      const spring = 70 * (HOVER - this.gap) - 11 * (this.vel.y - slopeVy);
+    if (this.gap < field && this.jumpTimer === 0) {
+      const spring = 70 * (hover - this.gap) - 11 * (this.vel.y - slopeVy);
       ay = THREE.MathUtils.clamp(spring, -G_AIR * 1.5, 160); // field also pulls the bike down over crests
     }
-    if (input.hit('Space') && this.gap < FIELD && this.jumpTimer === 0) {
+    if (input.hit('Space') && this.gap < field && this.jumpTimer === 0) {
       this.vel.y = Math.max(this.vel.y, slopeVy) + 13;
       this.jumpTimer = 0.6;
     }
@@ -215,7 +226,7 @@ export class Player {
     }
     this.gap = this.pos.y - h2;
     const wasAir = this.airborne;
-    this.airborne = this.gap > FIELD || this.jumpTimer > 0;
+    this.airborne = this.gap > field || this.jumpTimer > 0;
     this.airTime = this.airborne ? this.airTime + dt : 0;
     if (wasAir && !this.airborne && this.landImpact === 0) this.landImpact = 0.3;
 
