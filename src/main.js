@@ -644,7 +644,14 @@ function playerShot(kind) {
 
 // A green cactus sticks a spine on the bike and withers; a yellow one, hit before by you or
 // anyone else, gives nothing. A bike full of spines starts you over, with every cactus green.
+// Outside the coin jail a spine sends you back to the jail, and the one that fills the bike
+// sends you back to the desert; the other riders count theirs in war.pricks.
 const SPINES_FULL = 30;
+function prickRider(id) {
+  const full = ++war.pricks[id] >= SPINES_FULL;
+  if (full) war.pricks[id] = 0;
+  war.send(id, full ? 0 : JAIL);
+}
 bike.setSpines(war.spines.length);
 hud.spines.textContent = war.spines.length;
 hud.spines.parentElement.hidden = !LEVEL.cacti;
@@ -655,7 +662,13 @@ function stickSpines(touching) {
     terrain.wither(c);
     war.spines.push(c.id);
     crash(0.2);
-    if (war.spines.length >= SPINES_FULL) {
+    if (IN_PENALTY) {
+      const full = war.spines.length >= SPINES_FULL;
+      if (full) war.spines = [];
+      war.send(0, full ? 0 : JAIL);
+      showAlert(full ? `車上插滿 ${SPINES_FULL} 根刺！回第一關沙漠` : `撞到仙人掌！回監牢（${war.spines.length} / ${SPINES_FULL} 根刺）`, 2, 'death');
+      leaving = 1.6;
+    } else if (war.spines.length >= SPINES_FULL) {
       war.spines = [];
       terrain.reviveCacti();
       die(`車上插滿 ${SPINES_FULL} 根刺！重新開始`);
@@ -854,7 +867,9 @@ function frame(timestamp) {
   }
   rivals.targets(weapons.targets);
   swarm.targets(weapons.targets);
-  if (LEVEL.cacti) for (const t of weapons.targets) if (t !== playerTarget) terrain.witherAt(t.x, t.z);
+  if (LEVEL.cacti) {
+    for (const t of weapons.targets) if (t !== playerTarget && terrain.witherAt(t.x, t.z) && IN_PENALTY) prickRider(t.id);
+  }
   weapons.update(dt, camera.position, (t, kind, shooter) => {
     if (t.id === 0) {
       playerShot(kind);

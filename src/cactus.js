@@ -81,7 +81,8 @@ export function setWithered(c, withered) {
 }
 
 // Adds this chunk's cacti to its props group and returns them as { id, x, z, r, top, withered, mesh, index }.
-export function addCacti(props, cx, cz, size, heightAt) {
+// keep(x, z), when given, says where a cactus may stand; prefix keeps one level's ids apart.
+export function addCacti(props, cx, cz, size, heightAt, keep = null, prefix = '') {
   const rng = mulberry32(hashSeed(cx + 21000, cz - 21000));
   const trunks = new Batch(trunkGeo, trunkMat, { colors: true });
   const spines = new Batch(spinesGeo, spinesMat);
@@ -91,13 +92,13 @@ export function addCacti(props, cx, cz, size, heightAt) {
     const z = (cz + rng()) * size;
     const s = 0.9 + rng() * 0.6;
     const yaw = rng() * Math.PI * 2;
-    if (Math.hypot(x, z) < SPAWN_CLEAR || onRoad(x, z, 3 * s)) continue;
+    if (Math.hypot(x, z) < SPAWN_CLEAR || onRoad(x, z, 3 * s) || (keep && !keep(x, z))) continue;
     if (props.colliders.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 2)) continue;
     if (Math.hypot(heightAt(x + 2, z) - heightAt(x - 2, z), heightAt(x, z + 2) - heightAt(x, z - 2)) / 4 > STEEP) continue;
     const y = heightAt(x, z);
     trunks.add(x, y - 0.1, z, s, s, s, yaw, 0, 0, GREEN);
     spines.add(x, y - 0.1, z, s, s, s, yaw);
-    cacti.push({ id: `${cx}:${cz}:${i}`, x, z, r: 1.1 * s, top: y + HEIGHT * s, withered: false, index: cacti.length });
+    cacti.push({ id: `${prefix}${cx}:${cz}:${i}`, x, z, r: 1.1 * s, top: y + HEIGHT * s, withered: false, index: cacti.length });
   }
   const mesh = trunks.build(props.group);
   spines.build(props.group);

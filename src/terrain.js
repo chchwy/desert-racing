@@ -12,7 +12,7 @@ import { buildReefProps } from './reef.js';
 import { buildJailProps } from './jail.js';
 import { buildPenaltyProps } from './penalty.js';
 import { addCacti, setWithered } from './cactus.js';
-import { addOutside } from './outside.js';
+import { addOutside, density } from './outside.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -470,7 +470,9 @@ export class Terrain {
     if (HAS_ROAD) clearRoad(props);
     if (LEVEL.outside) addOutside(props, cx, cz, CHUNK_SIZE, heightAt);
     if (LEVEL.cacti) {
-      props.cacti = addCacti(props, cx, cz, CHUNK_SIZE, heightAt);
+      props.cacti = LEVEL.outside
+        ? addCacti(props, cx, cz, CHUNK_SIZE, heightAt, (x, z) => density(x, z) > 0, 'p')
+        : addCacti(props, cx, cz, CHUNK_SIZE, heightAt);
       for (const c of props.cacti) if (this.withered.has(c.id)) setWithered(c, true);
     }
     const key = this.key(cx, cz);
@@ -628,13 +630,17 @@ export class Terrain {
     setWithered(c, true);
   }
 
-  // Withers the green cacti a rider at (x, z) is touching.
+  // Withers the green cacti a rider at (x, z) is touching; true if there was one.
   witherAt(x, z) {
     const cacti = this.chunks.get(this.key(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)))?.props.cacti;
-    if (!cacti) return;
+    if (!cacti) return false;
+    let hit = false;
     for (const c of cacti) {
-      if (!c.withered && (x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r) this.wither(c);
+      if (c.withered || (x - c.x) ** 2 + (z - c.z) ** 2 > c.r * c.r) continue;
+      this.wither(c);
+      hit = true;
     }
+    return hit;
   }
 
   witherIds(ids) {

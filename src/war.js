@@ -35,6 +35,7 @@ export class War {
     this.coins = 0; // the player's coin count, carried across level reloads
     this.kills = 0; // foes the player has shot
     this.spines = []; // ids of the cacti whose spine is stuck on the player's bike
+    this.pricks = new Uint8Array(this.n); // the other riders' cactus hits outside the coin jail
     this.load();
     this.acc = 0;
     this.saveIn = 2;
@@ -62,13 +63,14 @@ export class War {
       this.kills = saved?.kills ?? 0;
     }
     this.spines = Array.isArray(saved?.spines) ? saved.spines : [];
+    if (Array.isArray(saved?.pricks) && saved.pricks.length === this.n) this.pricks.set(saved.pricks);
   }
 
   save() {
     let s = '';
     for (let i = 0; i < this.n; i++) s += String.fromCharCode(48 + this.stage[i]);
     try {
-      localStorage.setItem(KEY, JSON.stringify({ n: this.n, stage: s, winner: this.winner, coins: this.coins, kills: this.kills, spines: this.spines }));
+      localStorage.setItem(KEY, JSON.stringify({ n: this.n, stage: s, winner: this.winner, coins: this.coins, kills: this.kills, spines: this.spines, pricks: Array.from(this.pricks) }));
     } catch {
       // private window or blocked storage: the war just does not carry over
     }
@@ -80,6 +82,7 @@ export class War {
     this.coins = 0;
     this.kills = 0;
     this.spines = [];
+    this.pricks.fill(0);
     this.save();
   }
 
