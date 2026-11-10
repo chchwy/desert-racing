@@ -11,8 +11,10 @@ import { FRIEND, FOE } from './teams.js';
 // Big coins sit along the way, and both routes end in the fenced arena where red and
 // blue meet; reaching it is the finish.
 
-const HALF_X = 85;
-const HALF_Z = 70;
+// Pens, routes and arena are laid out at GROW times their first size.
+const GROW = 1.5;
+const HALF_X = 85 * GROW;
+const HALF_Z = 70 * GROW;
 const BAR_STEP = 2.2;
 const BAR_H = 6;
 const SLOT = 6.2; // parking grid spacing
@@ -20,7 +22,7 @@ const COLS = 25;
 
 export const PENS = {
   [FRIEND]: { x: 0, z: 0 },
-  [FOE]: { x: 260, z: 0 },
+  [FOE]: { x: 260 * GROW, z: 0 },
 };
 
 // Parking spot n (0..499) in a team's pen.
@@ -78,13 +80,13 @@ function perimeter(pen) {
 
 // The secret routes: one out of each pen's south side (the blue one mirrors the red),
 // ROUTE_W either side, both running into the arena where red and blue meet.
-const RED_ROUTE = [[40, -60], [40, -110], [-20, -150], [-20, -200], [60, -240], [60, -305]];
+const RED_ROUTE = [[40, -60], [40, -110], [-20, -150], [-20, -200], [60, -240], [60, -305]].map(([x, z]) => [x * GROW, z * GROW]);
 export const ROUTES = {
   [FRIEND]: RED_ROUTE.map(([x, z]) => ({ x, z })),
   [FOE]: RED_ROUTE.map(([x, z]) => ({ x: PENS[FOE].x - x, z })),
 };
 export const ROUTE_W = 4;
-export const ARENA = { x0: 40, x1: 220, z0: -370, z1: -295 };
+export const ARENA = { x0: 40 * GROW, x1: 220 * GROW, z0: -370 * GROW, z1: -295 * GROW };
 export function inArena(x, z, margin = 0) {
   return x > ARENA.x0 + margin && x < ARENA.x1 - margin && z > ARENA.z0 + margin && z < ARENA.z1 - margin;
 }
