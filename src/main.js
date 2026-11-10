@@ -24,7 +24,8 @@ import { War, JAIL, PENALTY } from './war.js';
 import { Weapons, AIR, GUN } from './weapons.js';
 import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
 import { Tears } from './tears.js';
-import { RoomZones, BUILDING, MACHINES, ROOMS, glassMat } from './penalty.js';
+import { RoomZones, BUILDING, MACHINES, ROOMS, ROOM, glassMat } from './penalty.js';
+import { density } from './outside.js';
 import { OFF, DRIVE } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
@@ -255,8 +256,10 @@ if (IN_JAIL) {
   swarm.coinSources = [{ box: BUILDING, src: jailCoins }];
 }
 const route = IN_JAIL ? new RouteOverlay(scene, heightAt) : null;
+// Outside the coin jail it rains coins, thick where the creepers and coins lie thick.
+if (IN_PENALTY) coinRain.zone = (pos) => density(pos.x, pos.z);
 if (LOCKED) {
-  coinRain.mesh.visible = false;
+  coinRain.mesh.visible = IN_PENALTY;
   swarm.speedCap = JAIL_TOP;
   // Same rules for the swarm: thirty coins buy their way out, and a speeder in the jail
   // goes to the penalty jail.
@@ -427,6 +430,98 @@ function emitDust(dt) {
       1.0 + Math.random() * 1.4,
     );
   }
+}
+
+// A crystal, glass panel or door broke. In the coin jail that joins two rooms (or a
+// room and the open floor), and the riders boxed in them get the joined box.
+function broke(spire, vel) {
+  shatter?.burst(spire, vel);
+  frostBurst(spire);
+  if (!spire.door || !zones) return;
+  zones.join(spire.door.rooms[0], spire.door.rooms[1]);
+  crash(0.9 / (1 + Math.hypot(spire.x - camera.position.x, spire.z - camera.position.z) / 40));
+  for (let i = 0; i < swarm.n; i++) {
+    if (swarm.state[i] !== DRIVE) continue;
+    const room = roomOf(war.swarmBase + i);
+    if (zones.find(room) === zones.find(spire.door.rooms[0])) swarm.box[i] = zones.box(room);
+  }
+}
+
+// Outside the coin jail. A creeper blows you back to the desert, a villager costs
+// VILLAGER_FINE and a black spider SPIDER_FINE; coins add what they say.
+const VILLAGER_FINE = 300;
+const SPIDER_FINE = 200;
+function boom(b) {
+  for (let i = 0; i < 50; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 4 + Math.random() * 14;
+    dust.emit(b.x, b.baseY + 1 + Math.random() * 2, b.z, Math.cos(a) * sp, 3 + Math.random() * 10, Math.sin(a) * sp, 2.5 + Math.random() * 3, 1.2 + Math.random() * 1.2);
+  }
+  crash(1 / (1 + Math.hypot(b.x - camera.position.x, b.z - camera.position.z) / 30));
+}
+function metOutside(b) {
+  if (b.coin) {
+    addCoins(b.coin);
+    chime();
+    return;
+  }
+  if (b.mob === 'creeper') {
+    boom(b);
+    if (leaving > 0) return;
+    player.vel.y += 14;
+    player.landImpact = 1;
+    hud.burn.classList.remove('flash');
+    void hud.burn.offsetWidth;
+    hud.burn.classList.add('flash');
+    showAlert('苦力怕爆炸！炸回第一關沙漠', 2, 'death');
+    war.send(0, 0);
+    leaving = 1.6;
+    return;
+  }
+  const fine = b.mob === 'villager' ? VILLAGER_FINE : SPIDER_FINE;
+  setCoins(coinCount() - fine);
+  crash(0.5);
+  player.landImpact = Math.max(player.landImpact, 0.6);
+  showAlert(`撞到${b.mob === 'villager' ? '麥塊人' : '黑蜘蛛'}！罰 ${fine} 枚`, 1.6, 'warn');
+}
+
+// The other riders in the coin jail play by the same rules: now and then one rams a
+// wall of the room it is in (WALL_EVERY seconds apart on average, each), and outside a
+// creeper blows it back to the desert.
+const WALL_EVERY = 30;
+const ramAt = new THREE.Vector3();
+const STILL = new THREE.Vector3();
+let wallIn = 2;
+function penaltyRiders(dt) {
+  const boxed = [];
+  for (let i = 0; i < swarm.n; i++) {
+    if (swarm.state[i] !== DRIVE) continue;
+    const x = swarm.x[i];
+    const z = swarm.z[i];
+    if (x < BUILDING.x0 || x > BUILDING.x1 || z < BUILDING.z0 || z > BUILDING.z1) {
+      const b = terrain.breakAt(x, z, (r) => r.mob === 'creeper');
+      if (b) {
+        boom(b);
+        war.send(war.swarmBase + i, 0);
+      }
+    } else {
+      boxed.push(i);
+    }
+  }
+  wallIn -= dt;
+  if (wallIn > 0 || !boxed.length) return;
+  wallIn = WALL_EVERY / boxed.length;
+  const i = boxed[Math.floor(Math.random() * boxed.length)];
+  // The middle of one of the four walls of the room the rider is in, a little off center.
+  const cx = Math.round(swarm.x[i] / ROOM) * ROOM;
+  const cz = Math.round(swarm.z[i] / ROOM) * ROOM;
+  const side = Math.floor(Math.random() * 4);
+  const along = (Math.random() * 2 - 1) * 40;
+  const half = ROOM / 2;
+  const wx = side === 0 ? cx + half : side === 1 ? cx - half : cx + along;
+  const wz = side === 2 ? cz + half : side === 3 ? cz - half : cz + along;
+  ramAt.set(wx, heightAt(wx, wz) + 1, wz);
+  for (const spire of terrain.smash(ramAt, ramAt)) broke(spire, STILL);
 }
 
 // A cloud of snow and ice dust where a crystal broke.
@@ -627,20 +722,15 @@ function frame(timestamp) {
   // Ice crystals in the bike's path this frame shatter instead of stopping it.
   smashAhead.copy(player.pos).addScaledVector(player.vel, dt);
   for (const spire of terrain.smash(player.pos, smashAhead)) {
-    shatter?.burst(spire, player.vel);
-    frostBurst(spire);
-    if (spire.door && zones) {
-      zones.join(spire.door.rooms[0], spire.door.rooms[1]);
-      crash(0.9);
-      for (let i = 0; i < swarm.n; i++) {
-        if (swarm.state[i] !== DRIVE) continue;
-        const room = roomOf(war.swarmBase + i);
-        if (zones.find(room) === zones.find(spire.door.rooms[0])) swarm.box[i] = zones.box(room);
-      }
+    if (spire.mob || spire.coin) {
+      metOutside(spire);
+      continue;
     }
+    broke(spire, player.vel);
     player.vel.multiplyScalar(0.88);
     player.landImpact = Math.max(player.landImpact, 0.8);
   }
+  if (IN_PENALTY) penaltyRiders(dt);
   // two physics substeps for stable hovering at high speed
   // The hidden gate in the jail fence opens only for a rider rich enough to see the route.
   const seesRoute = coinCount() >= SEE_ROUTE;
@@ -662,7 +752,7 @@ function frame(timestamp) {
   if (LEVEL.cacti && !dead && war.winner == null) stickSpines(terrain.cactiTouching(prevPos, player.pos));
   terrain.update(player.pos);
   let gained = terrain.collectCoins(prevPos, player.pos);
-  if (!LOCKED) gained += coinRain.update(dt, time, player, !dead);
+  if (!IN_JAIL) gained += coinRain.update(dt, time, player, !dead);
   if (jailCoins) {
     const got = jailCoins.update(dt, time, player.pos);
     if (got.count) {

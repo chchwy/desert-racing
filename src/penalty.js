@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // The penalty jail (the coin jail), for riders caught speeding in the jail: a huge glass block of ROOMS x ROOMS rooms, one rider to a room (the player in room 0, around the
 // origin). Every inner wall is two glass panels with a brown door between them; ramming
 // a panel or a door breaks it like an ice crystal (Terrain.smash, with glass shards),
-// and the two rooms open into one. A coin fountain over every room sprays big coins. Through the glass you can see the riders next door before you get to them.
+// and the two rooms open into one. The outer walls break the same way, onto OUTSIDE. A coin fountain over every room sprays big coins. Through the glass you can see the riders next door before you get to them.
 
 export const ROOMS = 12;
 export const ROOM = 90; // metres, wall to wall
@@ -11,6 +11,7 @@ const WALL_H = 8;
 const POST_STEP = 1.6;
 const DOOR_W = 7;
 const HALF = ROOM / 2;
+export const OUTSIDE = ROOMS * ROOMS; // the zone number of the open floor around the block
 
 // Room k (0..ROOMS²-1) center and floor box.
 export function roomCenter(k) {
@@ -21,10 +22,12 @@ export function roomBox(k, margin = 2.5) {
   return { x0: c.x - HALF + margin, x1: c.x + HALF - margin, z0: c.z - HALF + margin, z1: c.z + HALF - margin };
 }
 export const BUILDING = { x0: -HALF, x1: (ROOMS - 1) * ROOM + HALF, z0: -HALF, z1: (ROOMS - 1) * ROOM + HALF };
+const OUT_REACH = 600;
+const OPEN = { x0: BUILDING.x0 - OUT_REACH, x1: BUILDING.x1 + OUT_REACH, z0: BUILDING.z0 - OUT_REACH, z1: BUILDING.z1 + OUT_REACH };
 export const MACHINES = Array.from({ length: ROOMS * ROOMS }, (_, k) => roomCenter(k));
 
-// Glass panels and doors. Each is a straight piece { x0, z0, x1, z1 }; the inner ones
-// carry the two rooms they separate and can be broken.
+// Glass panels and doors. Each is a straight piece { x0, z0, x1, z1 } carrying the two
+// rooms (or a room and OUTSIDE) it separates; every one can be broken.
 function layout() {
   const pieces = [];
   for (let k = 0; k <= ROOMS; k++) {
@@ -32,14 +35,10 @@ function layout() {
     for (let r = 0; r < ROOMS; r++) {
       const a = -HALF + r * ROOM;
       const b = a + ROOM;
-      const inner = k > 0 && k < ROOMS;
       for (const vertical of [true, false]) {
         const seg = (u0, u1) => (vertical ? { x0: line, z0: u0, x1: line, z1: u1 } : { x0: u0, z0: line, x1: u1, z1: line });
-        if (!inner) {
-          pieces.push({ ...seg(a, b), kind: 'glass', rooms: null });
-          continue;
-        }
-        const rooms = vertical ? [r * ROOMS + (k - 1), r * ROOMS + k] : [(k - 1) * ROOMS + r, k * ROOMS + r];
+        const room = (j) => (j < 0 || j >= ROOMS ? OUTSIDE : vertical ? r * ROOMS + j : j * ROOMS + r);
+        const rooms = [room(k - 1), room(k)];
         const mid = (a + b) / 2;
         pieces.push({ ...seg(a, mid - DOOR_W / 2), kind: 'glass', rooms });
         pieces.push({ ...seg(mid - DOOR_W / 2, mid + DOOR_W / 2), kind: 'door', rooms });
@@ -151,7 +150,7 @@ export function buildPenaltyProps(cx, cz, size, heightAt) {
 // Rooms joined by broken panels and doors, as union-find over room numbers.
 export class RoomZones {
   constructor() {
-    this.parent = Array.from({ length: ROOMS * ROOMS }, (_, k) => k);
+    this.parent = Array.from({ length: OUTSIDE + 1 }, (_, k) => k);
   }
   find(k) {
     while (this.parent[k] !== k) k = this.parent[k] = this.parent[this.parent[k]];
@@ -160,9 +159,11 @@ export class RoomZones {
   join(a, b) {
     this.parent[this.find(a)] = this.find(b);
   }
-  // The floor box covering every room joined to room k.
+  // The floor box covering every room joined to room k; once that reaches OUTSIDE, the
+  // open floor out to OUT_REACH past the block.
   box(k) {
     const root = this.find(k);
+    if (root === this.find(OUTSIDE)) return OPEN;
     let b = null;
     for (let r = 0; r < ROOMS * ROOMS; r++) {
       if (this.find(r) !== root) continue;

@@ -204,6 +204,7 @@ export const LEVELS = {
     title: 'Penalty Jail — prototype',
     eyebrow: 'PENALTY JAIL / BATTLE PROTOTYPE',
     headline: '關進罰錢牢。',
+    outside: true,
     sub: '一間一間的牢房 · 撞破門找同伴 · 撿滿 30 枚回監牢',
     page: '#8f8a84',
     haze: 0x8f8a84,

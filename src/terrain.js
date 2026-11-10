@@ -12,6 +12,7 @@ import { buildReefProps } from './reef.js';
 import { buildJailProps } from './jail.js';
 import { buildPenaltyProps } from './penalty.js';
 import { addCacti, setWithered } from './cactus.js';
+import { addOutside } from './outside.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -467,6 +468,7 @@ export class Terrain {
     const props = buildChunkProps(cx, cz, CHUNK_SIZE, heightAt);
     props.breakables ??= [];
     if (HAS_ROAD) clearRoad(props);
+    if (LEVEL.outside) addOutside(props, cx, cz, CHUNK_SIZE, heightAt);
     if (LEVEL.cacti) {
       props.cacti = addCacti(props, cx, cz, CHUNK_SIZE, heightAt);
       for (const c of props.cacti) if (this.withered.has(c.id)) setWithered(c, true);
@@ -604,6 +606,21 @@ export class Terrain {
       }
     }
     return hits;
+  }
+
+  // Breaks and returns the first unbroken breakable in (x, z)'s chunk that accept()
+  // takes and a rider at (x, z) touches, or null.
+  breakAt(x, z, accept) {
+    const key = this.key(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE));
+    const props = this.chunks.get(key)?.props;
+    if (!props) return null;
+    for (const b of props.breakables) {
+      if (b.broken || !accept(b) || (x - b.x) ** 2 + (z - b.z) ** 2 > (b.w + 1.3) ** 2) continue;
+      this.broken.add(key + ':' + b.id);
+      breakProp(props, b);
+      return b;
+    }
+    return null;
   }
 
   wither(c) {
