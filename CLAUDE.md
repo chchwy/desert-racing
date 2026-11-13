@@ -28,7 +28,7 @@ URL flags, read in `src/main.js`:
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
 
-`window.__game` is `{ player, bike, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
+`window.__game` is `{ player, bike, house, ghosts, setCoins, coinCount, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
 
 A ~98 MB reference mp4 sits untracked in the repo root. The game does not load it. Do not commit it.
 
@@ -85,6 +85,12 @@ The ocean level uses `seabedHeight`: broad slopes stepped into reef terraces, se
 The water surface is `LEVEL.sea` (110 m; the start is ~86 m under it). `src/sea.js` draws it as a camera-following plane, bright and rippling from below and deep blue from above, and sets the light by camera depth: below ~90 m the fog, sky and lights fade toward `LEVEL.abyss`, and above the surface the fog and sky switch to `LEVEL.air` and the `Weather` sets hide. `LEVEL.ground.deep` darkens the ground color with depth (`from` and `span` are absolute heights), `LEVEL.ground.island` dries out the ground above the surface, and the caustics fade out between 60 and 200 m under the surface.
 
 `buildReefProps` places kelp forests and coral gardens by two noise fields, leaves slopes steeper than `STEEP` and anything above `DRY` (just under the surface) bare, and below `DEEP` (-35 m) grows glowing anemones and tube worms instead. A second pass on its own seed (`ABYSS_TRIES` samples, kept only below `ABYSS`, -150 m) packs the abyss floor with bigger clusters, so the reef above keeps its layout. They are unlit `MeshBasicMaterial` with instance colors past 1, so bloom picks them up. The glowing life kills: each cluster returns a hazard `{ x, z, r, top }` in `props.hazards`, `Terrain.hazardHit` checks the bike against them, and `main.js` calls `die`. It also places reef rock piles and a shipwreck on its side at the landmark spot with colliders down its keel. Kelp sways in its own vertex shader (`swellUniforms`); only big brain corals, rocks and the wreck have colliders. `LEVEL.caustics` makes `patchGround` brighten the lit ground with a tileable water-caustic loop. The sky reads as the water surface from below: `sky.hazeTop` keeps the fog color high above the horizon, and fast bright clouds (`sky.cloudSpeed`) stand in for surface ripples. `FishSchools` (`src/fish.js`) keeps seven schools wandering near the bike under the surface, wiggles tails in the vertex shader with `gl_InstanceID`, scatters fish away from the bike, and respawns schools that fall 150 m behind. Fog is short (far 420). Bubbles and marine snow are two `Weather` sets.
+
+## Day, night and the house
+
+`src/daynight.js` keeps one clock for all levels: a 24-hour day is `DAY_LEN` (300) real seconds, from `Date.now()` plus an offset saved in localStorage `desert-racing-clock`, so reloads keep the hour and `skipToMorning` can move it. `Nightfall` resets the sun, hemisphere light, fog, sky colors and exposure to their daytime values every frame, the sea's own light runs, then the night darkens what is left; the sky shader takes `uNight` for stars, a moon and a fading sun.
+
+`src/house.js` is the player's house. At 50,000 coins the player pays them and owns it (`desert-racing-house`); it is placed ahead of the bike on every level, clamped inside the pen or room when locked up. Solid by day. At night, once per cycle, driving in sleeps 20 s with no hits (`sleeping`, `protect`), the camera waits out front under the 「沉睡中，請勿打擾」 sign, then it is 6:00 and pays 30,000. C (the horn) while asleep wakes early with no pay, and a clock stands by the door the rest of that night (C only cycles the camera when awake). `src/ghosts.js` chases a player with no house at night; a touch slows and scares it.
 
 ## Map
 

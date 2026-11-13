@@ -24,6 +24,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uCloud;  // cloud tint, white by default
   uniform float uCloudSpeed;
   uniform float uHazeTop; // how high the horizon haze climbs before the sky shows
+  uniform float uNight;   // 0 day .. 1 night (daynight.js)
   varying vec3 vDir;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -49,8 +50,19 @@ const fragmentShader = /* glsl */ `
 
     // sun
     float sd = max(dot(d, uSunDir), 0.0);
-    col += vec3(1.0, 0.92, 0.8) * pow(sd, 600.0) * 30.0 * uSun;
-    col += vec3(1.0, 0.9, 0.75) * pow(sd, 12.0) * 0.35 * uSun;
+    float sunUp = uSun * (1.0 - uNight);
+    col += vec3(1.0, 0.92, 0.8) * pow(sd, 600.0) * 30.0 * sunUp;
+    col += vec3(1.0, 0.9, 0.75) * pow(sd, 12.0) * 0.35 * sunUp;
+
+    // Night: stars on a fixed grid and a moon across the sky from the sun.
+    if (uNight > 0.0 && y > 0.0) {
+      vec2 g = floor(vec2(atan(d.z, d.x), asin(y)) * 260.0);
+      float star = step(0.9965, hash(g)) * (0.5 + 0.5 * hash(g + 7.0));
+      col += vec3(star) * smoothstep(0.03, 0.25, y) * uNight * 1.6;
+      vec3 moonDir = normalize(vec3(-uSunDir.x, uSunDir.y, -uSunDir.z));
+      float md = dot(d, moonDir);
+      col += vec3(0.95, 0.97, 1.0) * (smoothstep(0.99955, 0.9997, md) * 2.2 + pow(max(md, 0.0), 80.0) * 0.25) * uNight;
+    }
 
     // clouds on a flat layer
     if (y > 0.0) {
@@ -61,6 +73,7 @@ const fragmentShader = /* glsl */ `
       float shade = smoothstep(0.4, 0.9, fbm(uv + uSunDir.xz * 0.08));
       vec3 cloudCol = mix(vec3(1.05, 1.05, 1.08), vec3(0.72, 0.78, 0.88), shade * 0.7);
       cloudCol = cloudCol * uCloud + vec3(1.0, 0.95, 0.85) * pow(sd, 6.0) * 0.6;
+      cloudCol *= 1.0 - uNight * 0.85;
       float fade = smoothstep(0.02 + uHazeTop * 0.6, 0.22 + uHazeTop, y);
       col = mix(col, cloudCol, cover * fade * 0.95);
     }
@@ -87,6 +100,7 @@ export function createSky() {
       uCloud: { value: new THREE.Color(LEVEL.sky.cloud ?? 0xffffff) },
       uCloudSpeed: { value: LEVEL.sky.cloudSpeed ?? 1 },
       uHazeTop: { value: LEVEL.sky.hazeTop ?? 0.18 },
+      uNight: { value: 0 },
     },
     side: THREE.BackSide,
     depthWrite: false,

@@ -30,6 +30,9 @@ import { OFF, DRIVE } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
 import { Chooser } from './chooser.js';
+import { clock, Nightfall, skipToMorning } from './daynight.js';
+import { Ghosts } from './ghosts.js';
+import { House } from './house.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
 import { ChaseCamera } from './camera.js';
@@ -71,6 +74,7 @@ scene.add(sun, sun.target);
 // ----------------------------------------------------------------- world ----
 const sky = createSky();
 scene.add(sky);
+const nightfall = new Nightfall({ renderer, sun, hemi, sky, fog: scene.fog });
 
 const terrain = new Terrain(scene, renderer);
 const player = new Player();
@@ -404,6 +408,7 @@ const hud = {
   coins: document.getElementById('coins'),
   nono: document.getElementById('nono'),
   coinCount: document.getElementById('coin-count'),
+  clock: document.getElementById('clock'),
   alert: document.getElementById('alert'),
   burn: document.getElementById('burn'),
 };
@@ -724,6 +729,129 @@ const SLOW_MO = 0.25;
 let paused = false;
 const exitGate = coinExit ? new ExitGate(scene, coinExit, heightAt) : null;
 
+// With HOUSE_AT coins the player pays them for a house of its own, which from then on
+// stands ahead of it on every level (inside its pen or room when locked up). By day the
+// door is shut and the house is solid. At night, once per day-and-night cycle, driving
+// in puts the player to bed: nothing can touch it, a sign over the roof says so, and
+// after SLEEP_TIME seconds it is the next morning and the night paid HOUSE_PAY. The horn
+// (C) wakes it early, with no pay, and a clock stands by the door for the rest of that
+// night. A player with no house meets ghosts at night.
+const HOUSE_AT = 50000;
+const HOUSE_PAY = 30000;
+const SLEEP_TIME = 20;
+const HOUSE_AHEAD = 45;
+const HOUSE_DROP = 600; // metres away before it moves up ahead again
+const HOUSE_KEY = 'desert-racing-house';
+const house = new House(scene);
+const ghosts = new Ghosts(scene);
+const home = { owned: false, slept: null, early: null };
+try {
+  Object.assign(home, JSON.parse(localStorage.getItem(HOUSE_KEY)) ?? {});
+} catch {
+  // no storage: start without a house
+}
+function saveHome() {
+  try {
+    localStorage.setItem(HOUSE_KEY, JSON.stringify(home));
+  } catch {
+    // the house lasts until the page reloads
+  }
+}
+let sleeping = 0; // seconds left asleep; 0 awake
+let houseNag = 0;
+// The rectangle the house has to stay in: the player's pen or room, or null.
+function houseBounds() {
+  const p = player.pos;
+  if (IN_JAIL) {
+    const b = penBounds(war.team[0], 9);
+    return p.x > b.x0 && p.x < b.x1 && p.z > b.z0 && p.z < b.z1 ? b : null;
+  }
+  if (IN_PENALTY && p.x > BUILDING.x0 && p.x < BUILDING.x1 && p.z > BUILDING.z0 && p.z < BUILDING.z1) {
+    const cx = Math.round(p.x / ROOM) * ROOM;
+    const cz = Math.round(p.z / ROOM) * ROOM;
+    const h = ROOM / 2 - 9;
+    return { x0: cx - h, x1: cx + h, z0: cz - h, z1: cz + h };
+  }
+  return null;
+}
+function placeHouse() {
+  const b = houseBounds();
+  const ahead = b ? 25 : HOUSE_AHEAD;
+  let x = player.pos.x + player.forward.x * ahead;
+  let z = player.pos.z + player.forward.z * ahead;
+  if (b) {
+    x = THREE.MathUtils.clamp(x, b.x0, b.x1);
+    z = THREE.MathUtils.clamp(z, b.z0, b.z1);
+  }
+  house.place(x, terrain.floorAt(x, z), z, player.pos.x, player.pos.z);
+}
+function wakeUp() {
+  sleeping = 0;
+  const out = house.doorstep();
+  player.reset();
+  player.pos.set(out.x, terrain.floorAt(out.x, out.z) + 1, out.z);
+  player.yaw = out.yaw;
+  chase.initialized = false;
+  chase.heading = player.yaw;
+  bike.root.visible = true;
+  house.sleepSign.visible = false;
+}
+function houseStep(day, dt, time) {
+  if (!home.owned && coinCount() >= HOUSE_AT && deadTimer <= 0 && leaving <= 0) {
+    home.owned = true;
+    setCoins(coinCount() - HOUSE_AT);
+    saveHome();
+    placeHouse();
+    chime();
+    showAlert('花 5 萬蓋好自己的房子！晚上回家睡覺', 2.5, 'warn');
+  }
+  const ghostTouch = ghosts.update(dt, time, day.night && !home.owned && !LOCKED, player.pos, (x, z) => terrain.floorAt(x, z));
+  if (ghostTouch && deadTimer <= 0 && leaving <= 0) {
+    player.vel.multiplyScalar(0.3);
+    crash(0.4);
+    showAlert('被幽靈嚇到了！快去存錢蓋房子', 1.8, 'warn');
+  }
+  house.showClock(home.early === day.cycle && day.night && !sleeping ? day.hour : null);
+  if (!home.owned) return;
+  if (!house.shown || (!sleeping && house.distance(player.pos) > HOUSE_DROP)) placeHouse();
+
+  if (sleeping > 0) {
+    bike.root.visible = false;
+    house.sleepSign.visible = true;
+    protect = Math.max(protect, 0.5);
+    if (input.hit('KeyC')) {
+      home.early = day.cycle;
+      saveHome();
+      wakeUp();
+      showAlert('叭叭！被喇叭叫醒，半夜出門', 2, 'warn');
+      return;
+    }
+    sleeping -= dt;
+    if (sleeping <= 0) {
+      skipToMorning();
+      addCoins(HOUSE_PAY);
+      chime();
+      wakeUp();
+      showAlert('天亮了！睡飽了，賺到 3 萬枚', 2.5, 'warn');
+    }
+    return;
+  }
+  const d = house.distance(player.pos);
+  houseNag = Math.max(houseNag - dt, 0);
+  if (day.night && home.slept !== day.cycle && d < 4 && deadTimer <= 0 && leaving <= 0) {
+    home.slept = day.cycle;
+    saveHome();
+    sleeping = SLEEP_TIME;
+    player.vel.set(0, 0, 0);
+    showAlert('回家睡覺… 20 秒後天亮（按 C 喇叭可以提早出門）', 3, 'warn');
+  } else if (!day.night && d < 9 && houseNag <= 0) {
+    showAlert(`白天門鎖著，晚上才能進去（${Math.ceil(day.left)} 秒後天黑）`, 2, 'warn');
+    houseNag = 4;
+  }
+}
+// Open for the player at night until it has slept there; solid otherwise.
+const houseOpen = (day) => day.night && home.slept !== day.cycle;
+
 // While the picker is open the world waits and the camera circles in front of the bike,
 // framed to the right of the cards. Arrows or the pad step through riders, Enter or A
 // confirms.
@@ -750,6 +878,8 @@ function showRider(time) {
   sky.position.copy(camera.position);
   sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
   sun.target.position.copy(player.pos);
+  nightfall.reset();
+  nightfall.apply(clock().dark);
   if (usePost) composer.render();
   else renderer.render(scene, camera);
 }
@@ -779,7 +909,7 @@ function frame(timestamp) {
   const dt = Math.min(timer.getDelta(), 1 / 20) * (input.down('KeyV') ? SLOW_MO : 1);
   const time = timer.getElapsed();
 
-  if (input.hit('KeyC')) chase.cycle();
+  if (input.hit('KeyC') && !sleeping) chase.cycle();
   // Backspace (pad Menu) resets, or starts a new war once one is won; R and T fire.
   // L3 / R3 step through the level picker.
   if (input.hit('PadLevelBack') || input.hit('PadLevelForward')) {
@@ -815,7 +945,10 @@ function frame(timestamp) {
   // The hidden gate in the jail fence opens only for a rider rich enough to see the route.
   const seesRoute = coinCount() >= SEE_ROUTE;
   const colliders = terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
-  for (let i = 0; i < 2 && !dead; i++) {
+  const day = clock();
+  houseStep(day, dt, time);
+  if (house.shown && !houseOpen(day)) colliders.push(house.collider);
+  for (let i = 0; i < 2 && !dead && !sleeping; i++) {
     player.update(dt / 2, input, colliders, (x, z, n) => terrain.floorAt(x, z, n));
     if (i === 0) input.pressed.delete('Space');
   }
@@ -891,7 +1024,7 @@ function frame(timestamp) {
   // Weapons: R (or B) fires the air cannon, one ring out at a time; T a burst of four.
   protect = Math.max(protect - dt, 0);
   gunIn -= dt;
-  const armed = !dead && leaving <= 0 && (war.winner == null || arenaOn);
+  const armed = !dead && !sleeping && leaving <= 0 && (war.winner == null || arenaOn);
   const muzzleY = player.pos.y + 1.2;
   if (armed && (input.hit('KeyR') || input.hit('KeyB'))) weapons.fire(AIR, 0, FRIEND, player.pos.x, muzzleY, player.pos.z, player.yaw);
   if (armed && input.hit('KeyT') && gunIn <= 0) {
@@ -899,7 +1032,7 @@ function frame(timestamp) {
     gunIn = GUN_COOLDOWN;
   }
   // Riders that run into the player's back spikes.
-  if (!LOCKED && !dead && war.winner == null) {
+  if (!LOCKED && !dead && !sleeping && war.winner == null) {
     const f = player.forward;
     for (let i = 0; i < swarm.n; i++) {
       if (swarm.state[i] === DRIVE && spiked(swarm.x[i], swarm.z[i], f)) prick(war.swarmBase + i);
@@ -908,7 +1041,7 @@ function frame(timestamp) {
       if (r.active && spiked(r.body.pos.x, r.body.pos.z, f)) prick(war.rivalBase + i);
     });
   }
-  if (chooser.current.id === 'cactus' && !dead) {
+  if (chooser.current.id === 'cactus' && !dead && !sleeping) {
     const f = player.forward;
     for (let i = 0; i < swarm.n; i++) {
       if (swarm.state[i] === DRIVE && (LOCKED || !spiked(swarm.x[i], swarm.z[i], f))) cactusBump(war.swarmBase + i, swarm.x[i], swarm.z[i], time);
@@ -1024,6 +1157,13 @@ function frame(timestamp) {
   bike.root.updateMatrixWorld(true);
 
   chase.update(dt, player, time, { x: input.pad.lookX, y: input.pad.lookY }, (x, z) => terrain.floorAt(x, z));
+  // Asleep, the camera waits out front, looking at the house and its sign.
+  if (sleeping) {
+    const v = house.doorstep(22);
+    const h = house.root.position;
+    camera.position.set(v.x, Math.max(terrain.floorAt(v.x, v.z), h.y) + 6, v.z);
+    camera.lookAt(h.x, h.y + 5, h.z);
+  }
 
   bike.tipWorldPositions(tips);
   trails.forEach((t, i) => t.update(tips[i], camera.position, 0.25 + player.throttle * 0.5 + player.boost * 0.6));
@@ -1059,7 +1199,10 @@ function frame(timestamp) {
   swellUniforms.uTime.value = time;
   fish?.update(dt, time, player.pos, player.yaw);
 
+  nightfall.reset();
   sea?.update(time, camera);
+  nightfall.apply(day.dark);
+  house.update(day.dark);
   sky.position.copy(camera.position);
   sky.material.uniforms.uTime.value = time;
   sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
@@ -1078,6 +1221,11 @@ function frame(timestamp) {
     hud.speed.textContent = Math.round(player.speed * 3.6);
     hud.gap.textContent = player.gap.toFixed(1);
     hud.state.textContent = player.stateLabel;
+    const m = Math.floor(day.left / 60);
+    const sec = String(Math.floor(day.left % 60)).padStart(2, '0');
+    const hh = Math.floor(day.hour);
+    const mm = String(Math.floor((day.hour % 1) * 60)).padStart(2, '0');
+    hud.clock.textContent = `${day.night ? '🌙 晚上' : '☀️ 白天'} ${hh}:${mm} · ${m}:${sec} 後${day.night ? '天亮' : '天黑'}`;
     hud.energy.style.transform = `scaleX(${player.energy.toFixed(3)})`;
   }
   if (fpsAcc > 1) {
@@ -1095,5 +1243,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, bike, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins };
+window.__game = { player, bike, house, ghosts, setCoins, coinCount, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins };
 requestAnimationFrame(frame);
