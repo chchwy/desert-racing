@@ -4,7 +4,7 @@ import * as THREE from 'three';
 // or beak, ears, arms reaching to the hull, knees tucked forward, and a tail.
 // Same frame as the bike: +Z forward, +Y up, +X to the rider's left.
 
-const SEAT = new THREE.Vector3(0, 0.98, -0.25);
+export const SEAT = new THREE.Vector3(0, 0.98, -0.25);
 const UP = new THREE.Vector3(0, 1, 0);
 
 const mats = new Map();
@@ -30,7 +30,7 @@ function capsuleGeo(len) {
   return g;
 }
 
-function ball(parent, color, p, s) {
+export function ball(parent, color, p, s) {
   const m = new THREE.Mesh(sphereGeo, mat(color));
   m.position.set(...p);
   m.scale.set(...(Array.isArray(s) ? s : [s, s, s]));
@@ -41,7 +41,7 @@ function ball(parent, color, p, s) {
 
 // A capsule of radius r whose caps end at a and b. The geometry is unit radius, so the
 // straight part is divided by r and the whole mesh scaled back by r.
-function limb(parent, color, a, b, r) {
+export function limb(parent, color, a, b, r) {
   const va = new THREE.Vector3(...a);
   const vb = new THREE.Vector3(...b);
   const d = vb.clone().sub(va);
@@ -55,7 +55,7 @@ function limb(parent, color, a, b, r) {
   return m;
 }
 
-function cone(parent, color, p, r, h, rot = [0, 0, 0]) {
+export function cone(parent, color, p, r, h, rot = [0, 0, 0]) {
   const m = new THREE.Mesh(coneGeo, mat(color));
   m.position.set(...p);
   m.scale.set(r, h, r);
@@ -96,7 +96,7 @@ export function buildAnimalRider(spec) {
     limb(body, fur, [0, 0.22, -0.12], [0, 0.66, 0.2], 0.27);
     ball(body, spec.belly, [0, 0.42, 0.14], [0.22, 0.26, 0.16]);
     if (spec.stripes) {
-      for (const y of [0.32, 0.48, 0.62]) ball(body, spec.stripes, [0, y, 0.02 + y * 0.35 - 0.12], [0.285, 0.035, 0.24]);
+      for (const y of [0.32, 0.48, 0.62]) ball(body, spec.stripes, [0, y, 0.02 + y * 0.35 - 0.12], [0.285, spec.headStripes ? 0.05 : 0.035, 0.24]);
     }
 
     // Arms out to the front of the hull, legs folded forward.
@@ -113,7 +113,16 @@ export function buildAnimalRider(spec) {
     head.position.set(0, 0.94, 0.4);
     rider.add(head);
     const hs = 0.29 * (spec.head ?? 1);
-    ball(head, fur, [0, 0, 0], spec.flat ? [hs * 1.25, hs * 0.75, hs] : hs);
+    ball(head, fur, [0, 0, 0], spec.flat ? [hs * 1.25, hs * 0.75, hs] : spec.long ? [hs * 0.82, hs * 0.95, hs * 1.15] : hs);
+    // A horse's long face: a tapered muzzle reaching down and forward.
+    if (spec.long) {
+      limb(head, fur, [0, -0.02, hs * 0.6], [0, -0.2, hs * 1.45], 0.15);
+      ball(head, spec.muzzle, [0, -0.22, hs * 1.55], [0.15, 0.13, 0.13]);
+      for (const sx of [-1, 1]) ball(head, spec.nose, [sx * 0.06, -0.2, hs * 1.55 + 0.12], 0.025);
+      if (spec.headStripes) {
+        for (const z of [0.55, 0.9, 1.2]) ball(head, spec.stripes, [0, 0.02 - z * 0.15, hs * z], [0.158, 0.025, 0.05]);
+      }
+    }
 
     // Snout, beak, or a pig's disc.
     const front = hs * (spec.flat ? 0.85 : 0.9);
@@ -123,9 +132,11 @@ export function buildAnimalRider(spec) {
     } else if (spec.disc) {
       ball(head, spec.disc, [0, -0.05, front + 0.02], [0.12, 0.09, 0.06]);
       for (const sx of [-1, 1]) ball(head, spec.nose, [sx * 0.04, -0.05, front + 0.075], 0.02);
+    } else if (spec.long) {
+      // Built with the head above.
     } else if (spec.snout > 0.35) {
       const l = 0.14 * spec.snout;
-      ball(head, spec.belly, [0, -0.07, front - 0.02 + l * 0.4], [0.13, 0.1, l]);
+      ball(head, spec.muzzle ?? spec.belly, [0, -0.07, front - 0.02 + l * 0.4], [0.13, 0.1, l]);
       ball(head, spec.nose, [0, -0.04, front - 0.02 + l * 1.3], 0.045);
     } else if (spec.bigNose) {
       ball(head, spec.nose, [0, -0.02, front + 0.02], [0.08, 0.11, 0.07]);
@@ -140,6 +151,26 @@ export function buildAnimalRider(spec) {
       if (spec.topEyes) ball(head, fur, [ex, eyeY - 0.03, eyeZ - 0.02], 0.1);
       ball(head, 0xffffff, [ex, eyeY, eyeZ], spec.topEyes ? 0.085 : 0.06);
       ball(head, 0x111114, [ex * 1.02, eyeY + 0.005, eyeZ + (spec.topEyes ? 0.065 : 0.045)], spec.topEyes ? 0.04 : 0.032);
+    }
+
+    // A horse's mane down the back of the head, a zebra's stripes over it, an antelope's horns.
+    if (spec.mane) {
+      ball(head, spec.mane, [0, hs * 0.95, hs * 0.35], [0.07, 0.07, 0.1]);
+      for (let k = 0; k < 6; k++) ball(head, spec.mane, [0, hs * (1 - k * 0.3), -hs * (0.2 + k * 0.3)], [0.06, 0.15, 0.1]);
+    }
+    if (spec.headStripes) {
+      for (const y of [-0.08, 0.05, 0.17]) ball(head, spec.stripes, [0, y, -0.03], [hs * 0.85, 0.03, hs * 1.08]);
+    }
+    // Ringed horns sweeping up and back.
+    if (spec.horns) {
+      for (const sx of [-1, 1]) {
+        const horn = new THREE.Group();
+        horn.position.set(sx * hs * 0.32, hs * 0.8, 0.02);
+        horn.rotation.set(-0.45, 0, -sx * 0.22);
+        head.add(horn);
+        cone(horn, spec.horns, [0, 0.3, 0], 0.06, 0.6);
+        for (const y of [0.08, 0.18, 0.28]) ball(horn, spec.horns, [0, y, 0], [0.065 - y * 0.08, 0.02, 0.065 - y * 0.08]);
+      }
     }
 
     // Ears, in a group each so they can flap in the wind.
@@ -208,6 +239,10 @@ export function buildAnimalRider(spec) {
         tail.add(m);
         break;
       }
+      case 'hair':
+        limb(tail, spec.mane, [0, 0, 0], [0, -0.3, -0.45], 0.08);
+        ball(tail, spec.mane, [0, -0.34, -0.5], 0.1);
+        break;
       case 'puff':
         ball(tail, spec.belly, [0, 0.02, -0.04], 0.1);
         break;

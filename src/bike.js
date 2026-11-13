@@ -300,6 +300,7 @@ export class Bike {
     this.thrusters = [new Thruster(body, 1.15, 0.7, -0.3, 0, lights), new Thruster(body, -1.15, 0.7, -0.3, 3.3, lights)];
 
     this.rider = rider(body);
+    this.seat = body;
 
     this.flag = null;
     if (flag) {
@@ -315,6 +316,11 @@ export class Bike {
         o.castShadow = true;
       }
     });
+  }
+
+  setRider(build) {
+    this.rider.removeFromParent();
+    this.rider = build(this.seat);
   }
 
   setSpines(n) {

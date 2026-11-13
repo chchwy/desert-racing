@@ -12,7 +12,10 @@
     <div id="hud">
       <div class="title">
         <div class="eyebrow" id="eyebrow">DESERT RIDER / BATTLE PROTOTYPE</div>
-        <div class="headline" id="headline">拿錢博士 Go ！</div>
+        <div class="headline-row">
+          <div class="headline" id="headline">拿錢博士 Go ！</div>
+          <button type="button" class="rechoose" id="rechoose" title="換角色" aria-label="換角色">×</button>
+        </div>
         <div class="sub" id="sub">懸浮機車原型 · 輝光＋沙塵 · 地形 endless</div>
         <div class="coin-count" id="coin-count"><span class="coin-disc"></span>金幣 <b id="coins">0</b></div>
       </div>
@@ -43,6 +46,14 @@
         手把：RT、左搖桿前推 油門 · LT、後拉 煞車 · 左右 轉向 · A 跳躍 · X 或 LB 推進 · B 空氣砲 · RB 機關槍 · View 花一萬枚前往下一關 · Y 切換鏡頭 · 右搖桿環顧 · L3／R3 上／下一關 · Menu 重置 · Xbox 鍵 暫停
       </div>
       <div class="fps" id="fps"></div>
+    </div>
+
+    <div class="chooser" id="chooser" hidden>
+      <div class="chooser-panel">
+        <div class="chooser-title">選擇角色</div>
+        <div class="chooser-grid" id="chooser-grid"></div>
+        <button type="button" class="chooser-ok" id="chooser-ok">確認</button>
+      </div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

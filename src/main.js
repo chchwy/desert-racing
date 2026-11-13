@@ -29,6 +29,7 @@ import { density } from './outside.js';
 import { OFF, DRIVE } from './swarm.js';
 import { createSky, SUN_DIR, HAZE_COLOR } from './sky.js';
 import { Bike } from './bike.js';
+import { Chooser } from './chooser.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
 import { ChaseCamera } from './camera.js';
@@ -76,8 +77,10 @@ const player = new Player();
 player.flyer = true;
 terrain.update(player.pos, true);
 
-const bike = new Bike({ flag: TEAM_COLOR[FRIEND], spikes: true }); // the player's team flies red; only the player has spikes
+const chooser = new Chooser();
+const bike = new Bike({ rider: chooser.current.build, flag: TEAM_COLOR[FRIEND], spikes: true }); // the player's team flies red; only the player has spikes
 scene.add(bike.root);
+chooser.onPreview = (r) => bike.setRider(r.build);
 
 // Tall grass streams around the bike on the prairie only.
 const grass = LEVEL.id === 'grassland' ? new Grass(scene) : null;
@@ -364,7 +367,7 @@ PICKER.forEach((id, i) => {
 });
 addEventListener('keydown', (e) => {
   const i = e.code.startsWith('Digit') ? Number(e.code.slice(5)) - 1 : -1;
-  if (i >= 0 && i < PICKER.length) switchLevel(PICKER[i]);
+  if (i >= 0 && i < PICKER.length && !chooser.open) switchLevel(PICKER[i]);
 });
 
 const hud = {
@@ -696,6 +699,36 @@ function respawn() {
 let paused = false;
 const exitGate = coinExit ? new ExitGate(scene, coinExit, heightAt) : null;
 
+// While the picker is open the world waits and the camera circles in front of the bike,
+// framed to the right of the cards. Arrows or the pad step through riders, Enter or A
+// confirms.
+let pickSteer = 0;
+function showRider(time) {
+  if (input.hit('ArrowLeft') || input.hit('KeyA')) chooser.select(chooser.index - 1);
+  if (input.hit('ArrowRight') || input.hit('KeyD')) chooser.select(chooser.index + 1);
+  const steer = Math.sign(Math.round(input.pad.steer));
+  if (steer && steer !== pickSteer) chooser.select(chooser.index - steer);
+  pickSteer = steer;
+  if (input.hit('Enter') || input.hit('Space')) chooser.confirm();
+
+  // Turned toward the sun, so the rider's face is lit.
+  const yaw = Math.atan2(SUN_DIR.x, SUN_DIR.z);
+  bike.root.position.copy(player.pos);
+  bike.root.rotation.set(0, yaw, 0);
+  bike.update(0, time, { throttle: 0, boost: 0, speed: 0, lean: 0 });
+  const a = yaw + 0.35 + Math.sin(time * 0.35) * 0.3;
+  const p = player.pos;
+  camera.position.set(p.x + Math.sin(a) * 7, p.y + 2.4, p.z + Math.cos(a) * 7);
+  // Aim to the left of the bike as seen from the camera, so it sits right of the cards.
+  const left = new THREE.Vector3(-Math.cos(a), 0, Math.sin(a));
+  camera.lookAt(p.x + left.x * 2.4, p.y + 1.2, p.z + left.z * 2.4);
+  sky.position.copy(camera.position);
+  sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
+  sun.target.position.copy(player.pos);
+  if (usePost) composer.render();
+  else renderer.render(scene, camera);
+}
+
 function frame(timestamp) {
   timer.update(timestamp);
   input.poll();
@@ -706,6 +739,13 @@ function frame(timestamp) {
   }
   if (paused) {
     timer.getDelta(); // drop the paused time
+    input.endFrame();
+    requestAnimationFrame(frame);
+    return;
+  }
+  if (chooser.open) {
+    showRider(timestamp / 1000);
+    timer.getDelta();
     input.endFrame();
     requestAnimationFrame(frame);
     return;
