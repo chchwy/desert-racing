@@ -70,8 +70,10 @@ const DRY = 0xc9a94a;
 const DRY_RIB = 0xa8883a;
 const DRY_TIME = 30;
 
-// 仙人掌先生: a green column in a clay pot, ribbed and spined, with a flower on top.
-function buildCactusMister(parent) {
+// 仙人掌先生, and 仙人掌硬幣先生 with a gold coin for a face: a green column in a clay pot, ribbed and spined, with a flower on top.
+const buildCactusMister = (parent) => buildCactus(parent, false);
+const buildCactusCoinMister = (parent) => buildCactus(parent, true);
+function buildCactus(parent, coinFace) {
   const rider = new THREE.Group();
   rider.position.copy(SEAT);
   parent.add(rider);
@@ -104,7 +106,19 @@ function buildCactusMister(parent) {
     const out = new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
     spine(out.x * 0.27, y, 0.04 + out.z * 0.27, out);
   }
-  face(head, 0.3, 0.98, 0.3);
+  if (coinFace) {
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.08, 32), new THREE.MeshStandardMaterial({ color: GOLD, metalness: 0.6, roughness: 0.35, emissive: 0x6a4300, emissiveIntensity: 0.4 }));
+    coin.rotation.x = Math.PI / 2;
+    coin.position.set(0, 0.95, 0.33);
+    coin.castShadow = true;
+    head.add(coin);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.255, 0.02, 8, 32), new THREE.MeshStandardMaterial({ color: 0xffd76a, metalness: 0.6, roughness: 0.3 }));
+    rim.position.set(0, 0.95, 0.375);
+    head.add(rim);
+    face(head, 0.38, 0.97, 0.27);
+  } else {
+    face(head, 0.3, 0.98, 0.3);
+  }
   // Cactus arms: out to the side, then up, spined too.
   for (const sx of [-1, 1]) {
     limb(head, green, [sx * 0.2, 0.62, 0.08], [sx * 0.46, 0.62, 0.12], 0.09);
@@ -327,14 +341,15 @@ function buildHorse(spec) {
 }
 
 export const ROSTER = [
-  { id: 'cactus', name: '仙人掌先生', icon: '🌵', build: buildCactusMister },
-  { id: 'coin', name: '硬幣先生', icon: '🪙', build: buildCoinMister },
+  { id: 'cactus', name: '仙人掌先生', icon: '🌵', build: buildCactusMister, cactus: true },
+  { id: 'coin', name: '硬幣先生', icon: '🪙', build: buildCoinMister, coins: true },
+  { id: 'cactusCoin', name: '仙人掌硬幣先生', icon: '🌵🪙', build: buildCactusCoinMister, cactus: true, coins: true },
   { id: 'dog', name: '狗', icon: '🐶' },
   { id: 'bear', name: '熊', icon: '🐻' },
   { id: 'panda', name: '熊貓', icon: '🐼' },
-  { id: 'horse', name: '馬', icon: '🐴' },
-  { id: 'zebra', name: '斑馬', icon: '🦓' },
-  { id: 'antelope', name: '羚羊', icon: '🦌' },
+  { id: 'horse', name: '馬', icon: '🐴', fast: true },
+  { id: 'zebra', name: '斑馬', icon: '🦓', fast: true },
+  { id: 'antelope', name: '羚羊', icon: '🦌', fast: true },
   { id: 'whiteCat', name: '白貓', icon: '🐱' },
   { id: 'blackCat', name: '黑貓', icon: '🐈‍⬛' },
   { id: 'frog', name: '青蛙', icon: '🐸' },

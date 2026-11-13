@@ -35,6 +35,7 @@ import { Ghosts } from './ghosts.js';
 import { House, drawClock } from './house.js';
 import { setWindowGlow } from './houses.js';
 import { TntField, REACH as TNT_REACH } from './tnt.js';
+import { PrivateRain } from './privaterain.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
 import { ChaseCamera } from './camera.js';
@@ -80,13 +81,17 @@ const nightfall = new Nightfall({ renderer, sun, hemi, sky, fog: scene.fog });
 
 const terrain = new Terrain(scene, renderer);
 const player = new Player();
-player.flyer = true;
 terrain.update(player.pos, true);
 
 const chooser = new Chooser();
 const bike = new Bike({ rider: chooser.current.build, flag: TEAM_COLOR[FRIEND], spikes: true }); // the player's team flies red; only the player has spikes
 scene.add(bike.root);
-chooser.onPreview = (r) => bike.setRider(r.build);
+// Only horse, zebra and antelope boost to 300 km/h and lift into low flight.
+player.flyer = !!chooser.current.fast;
+chooser.onPreview = (r) => {
+  bike.setRider(r.build);
+  player.flyer = !!r.fast;
+};
 
 // Tall grass streams around the bike on the prairie only.
 const grass = LEVEL.id === 'grassland' ? new Grass(scene) : null;
@@ -692,7 +697,7 @@ hud.spines.textContent = war.spines.length;
 hud.spines.parentElement.hidden = !LEVEL.cacti;
 terrain.witherIds(war.spines);
 function stickSpines(touching) {
-  if (chooser.current.id === 'cactus') return;
+  if (chooser.current.cactus) return;
   for (const c of touching) {
     if (c.withered || leaving > 0 || deadTimer > 0) continue;
     terrain.wither(c);
@@ -761,6 +766,7 @@ function saveHome() {
   }
 }
 let sleeping = 0; // seconds left asleep; 0 awake
+const bedLook = new THREE.Vector3();
 let houseNag = 0;
 // The rectangle the house has to stay in: the player's pen or room, or null.
 function houseBounds() {
@@ -786,7 +792,10 @@ function placeHouse() {
     x = THREE.MathUtils.clamp(x, b.x0, b.x1);
     z = THREE.MathUtils.clamp(z, b.z0, b.z1);
   }
-  house.place(x, terrain.floorAt(x, z), z, player.pos.x, player.pos.z);
+  // On the highest of its corners, so no sand shows through the floor; the plinth hides the gap on the low side.
+  let y = terrain.floorAt(x, z);
+  for (const [dx, dz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) y = Math.max(y, terrain.floorAt(x + dx, z + dz));
+  house.place(x, Math.min(y, terrain.floorAt(x, z) + 1.5), z, player.pos.x, player.pos.z);
 }
 function wakeUp() {
   sleeping = 0;
@@ -861,6 +870,8 @@ const houseOpen = (day) => day.night && home.slept !== day.cycle;
 // to the first level.
 const TNT_FINE = 50000;
 const tnt = new TntField(scene);
+// 硬幣先生's own coins, falling over his head where nobody else sees them.
+const privateRain = new PrivateRain(scene, (x, z) => terrain.floorAt(x, z));
 const bomber = () => chooser.current.id === 'bomber';
 function blowTnt(crate) {
   const { x, y, z } = crate.target;
@@ -1011,6 +1022,7 @@ function frame(timestamp) {
   terrain.update(player.pos);
   let gained = terrain.collectCoins(prevPos, player.pos);
   if (!IN_JAIL) gained += coinRain.update(dt, time, player, !dead);
+  gained += privateRain.update(dt, time, player, !!chooser.current.coins && !dead && !sleeping);
   if (jailCoins) {
     const got = jailCoins.update(dt, time, player.pos);
     if (got.count) {
@@ -1086,7 +1098,7 @@ function frame(timestamp) {
       if (r.active && spiked(r.body.pos.x, r.body.pos.z, f)) prick(war.rivalBase + i);
     });
   }
-  if (chooser.current.id === 'cactus' && !dead && !sleeping) {
+  if (chooser.current.cactus && !dead && !sleeping) {
     const f = player.forward;
     for (let i = 0; i < swarm.n; i++) {
       if (swarm.state[i] === DRIVE && (LOCKED || !spiked(swarm.x[i], swarm.z[i], f))) cactusBump(war.swarmBase + i, swarm.x[i], swarm.z[i], time);
@@ -1207,12 +1219,10 @@ function frame(timestamp) {
   bike.root.updateMatrixWorld(true);
 
   chase.update(dt, player, time, { x: input.pad.lookX, y: input.pad.lookY }, (x, z) => terrain.floorAt(x, z));
-  // Asleep, the camera waits out front, looking at the house and its sign.
+  // Asleep, the camera is inside, looking over the bed at the sign.
   if (sleeping) {
-    const v = house.doorstep(22);
-    const h = house.root.position;
-    camera.position.set(v.x, Math.max(terrain.floorAt(v.x, v.z), h.y) + 6, v.z);
-    camera.lookAt(h.x, h.y + 5, h.z);
+    house.bedroomView(camera.position, bedLook);
+    camera.lookAt(bedLook);
   }
 
   bike.tipWorldPositions(tips);
