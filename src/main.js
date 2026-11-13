@@ -716,6 +716,8 @@ function respawn() {
   rivals.regroup();
 }
 
+const SLOW_MO = 0.25;
+
 // L (pad Guide) pauses and resumes: the world stands still, the last frame stays up.
 let paused = false;
 const exitGate = coinExit ? new ExitGate(scene, coinExit, heightAt) : null;
@@ -771,7 +773,8 @@ function frame(timestamp) {
     requestAnimationFrame(frame);
     return;
   }
-  const dt = Math.min(timer.getDelta(), 1 / 20);
+  // Holding V plays the world in slow motion; the bike still answers the controls.
+  const dt = Math.min(timer.getDelta(), 1 / 20) * (input.down('KeyV') ? SLOW_MO : 1);
   const time = timer.getElapsed();
 
   if (input.hit('KeyC')) chase.cycle();

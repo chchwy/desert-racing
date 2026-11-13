@@ -23,6 +23,7 @@ URL flags, read in `src/main.js`:
 
 - `?level=rainforest`, `grassland`, `snow`, `volcano`, `ocean`, `jail` or `penalty`. No flag is the desert.
 - `?swarm=N` sets the swarm size (default 494, so the teams are 250 each; up to 10000).
+- Holding V runs the frame at `SLOW_MO` (a quarter) of real time.
 - `?demo` holds W and weaves with A/D. Useless for checking a fixed heading.
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
