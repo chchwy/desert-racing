@@ -8,8 +8,6 @@ const SPECIES = {
   dog: { fur: 0xb5793f, belly: 0xf3e2c8, ears: 'flop', inner: 0x8a5528, tail: 'long', snout: 1.25, nose: 0x1d1512 },
   bear: { fur: 0x7a5034, belly: 0xb88a63, ears: 'round', inner: 0xb88a63, tail: 'puff', snout: 1, head: 1.12, nose: 0x1d1512 },
   panda: { fur: 0xf7f7f4, belly: 0xf7f7f4, limbs: 0x1f1f22, ears: 'round', ear: 0x1f1f22, inner: 0x1f1f22, tail: 'puff', snout: 0.9, head: 1.15, nose: 0x1f1f22, patches: 0x1f1f22 },
-  horse: { fur: 0x8b5a33, belly: 0xa77349, muzzle: 0x6e4527, ears: 'pointy', inner: 0x5b3a22, tail: 'hair', mane: 0x2b1d14, long: true, nose: 0x2b1d14 },
-  zebra: { fur: 0xf4f3ee, belly: 0xf4f3ee, muzzle: 0x2a2a2e, ears: 'pointy', inner: 0x2a2a2e, tail: 'hair', mane: 0x1c1c20, long: true, nose: 0x111114, stripes: 0x1c1c20, headStripes: true },
   antelope: { fur: 0xc98d4e, belly: 0xf6eee2, ears: 'tall', inner: 0xf6eee2, tail: 'puff', snout: 1.5, nose: 0x231a17, horns: 0x3a2e24 },
   whiteCat: { fur: 0xf6f4f0, belly: 0xffffff, ears: 'pointy', inner: 0xf2a9b9, tail: 'long', snout: 0.5, nose: 0xe88a9c },
   blackCat: { fur: 0x26262b, belly: 0x34343a, ears: 'pointy', inner: 0x6a4a52, tail: 'long', snout: 0.5, nose: 0x6a4a52 },
@@ -143,6 +141,109 @@ function buildCoinMister(parent) {
   return rider;
 }
 
+const HORSES = {
+  horse: { coat: 0x8b5a33, muzzle: 0x5e3b22, mane: 0x2b1d14, hoof: 0x2a221c },
+  zebra: { coat: 0xf2f1ec, muzzle: 0x26262a, mane: 0x1c1c20, hoof: 0x1c1c20, stripes: 0x1c1c20 },
+};
+
+const Y = new THREE.Vector3(0, 1, 0);
+
+// A hoof: a short dark cylinder on the end of a leg, pointing along the leg.
+function hoof(parent, color, at, toward) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.1, 14), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+  m.position.set(...at);
+  m.quaternion.setFromUnitVectors(Y, new THREE.Vector3(...toward).sub(new THREE.Vector3(...at)).normalize());
+  m.castShadow = true;
+  parent.add(m);
+}
+
+// Thin dark bands around a segment, for the zebra.
+function bands(parent, color, a, b, r, n) {
+  const va = new THREE.Vector3(...a);
+  const d = new THREE.Vector3(...b).sub(va);
+  const q = new THREE.Quaternion().setFromUnitVectors(Y, d.clone().normalize());
+  for (let i = 1; i <= n; i++) {
+    const p = va.clone().addScaledVector(d, i / (n + 1));
+    const m = ball(parent, color, p.toArray(), [r * 1.06, 0.022, r * 1.06]);
+    m.quaternion.copy(q);
+  }
+}
+
+// Horse and zebra: an arched neck carrying a long face that hangs nose-down, eyes on
+// the sides, a mane down the neck, and legs that taper into hooves.
+function buildHorse(spec) {
+  return (parent) => {
+    const rider = new THREE.Group();
+    rider.position.copy(SEAT);
+    parent.add(rider);
+    const { coat, mane, stripes } = spec;
+    const body = new THREE.Group();
+    rider.add(body);
+
+    limb(body, coat, [0, 0.22, -0.12], [0, 0.62, 0.16], 0.26);
+    limb(body, coat, [0, 0.58, 0.14], [0, 0.86, 0.26], 0.16);
+    limb(body, coat, [0, 0.84, 0.25], [0, 1.08, 0.33], 0.125);
+    if (stripes) {
+      bands(body, stripes, [0, 0.22, -0.12], [0, 0.62, 0.16], 0.26, 4);
+      bands(body, stripes, [0, 0.58, 0.14], [0, 1.08, 0.33], 0.15, 4);
+    }
+    for (let k = 0; k < 8; k++) {
+      const t = k / 7;
+      ball(body, mane, [0, 1.2 - t * 0.55, 0.26 - t * 0.28], [0.045, 0.1, 0.09]);
+    }
+
+    // Forelegs reach for the front of the hull; hind legs fold forward.
+    for (const sx of [-1, 1]) {
+      limb(body, coat, [sx * 0.2, 0.6, 0.18], [sx * 0.27, 0.5, 0.52], 0.075);
+      limb(body, coat, [sx * 0.27, 0.5, 0.52], [sx * 0.3, 0.43, 0.78], 0.052);
+      hoof(body, spec.hoof, [sx * 0.305, 0.425, 0.82], [sx * 0.31, 0.42, 0.9]);
+      limb(rider, coat, [sx * 0.16, 0.2, -0.02], [sx * 0.3, 0.24, 0.4], 0.12);
+      limb(rider, coat, [sx * 0.3, 0.24, 0.4], [sx * 0.35, -0.1, 0.46], 0.055);
+      hoof(rider, spec.hoof, [sx * 0.355, -0.15, 0.465], [sx * 0.36, -0.3, 0.47]);
+      if (stripes) {
+        bands(body, stripes, [sx * 0.2, 0.6, 0.18], [sx * 0.3, 0.43, 0.78], 0.06, 4);
+        bands(rider, stripes, [sx * 0.3, 0.24, 0.4], [sx * 0.35, -0.1, 0.46], 0.055, 3);
+      }
+    }
+
+    // The head hangs nose-down from the top of the neck.
+    const head = new THREE.Group();
+    head.position.set(0, 1.12, 0.36);
+    head.rotation.x = 0.75;
+    rider.add(head);
+    ball(head, coat, [0, 0, 0], [0.14, 0.15, 0.18]);
+    limb(head, coat, [0, -0.01, 0.06], [0, -0.03, 0.34], 0.1);
+    ball(head, spec.muzzle, [0, -0.04, 0.4], [0.1, 0.095, 0.1]);
+    for (const sx of [-1, 1]) {
+      ball(head, 0x0e0a08, [sx * 0.045, -0.02, 0.49], [0.022, 0.03, 0.012]);
+      ball(head, 0x120c0a, [sx * 0.128, 0.04, 0.05], 0.034);
+      ball(head, 0xffffff, [sx * 0.15, 0.055, 0.07], 0.009);
+      cone(head, coat, [sx * 0.07, 0.17, -0.06], 0.04, 0.15, [-0.5, 0, -sx * 0.25]);
+    }
+    ball(head, mane, [0, 0.13, 0.04], [0.06, 0.05, 0.08]);
+    if (stripes) {
+      for (const z of [0.12, 0.2, 0.28]) ball(head, stripes, [0, 0.03 - z * 0.08, z], [0.103, 0.02, 0.03]);
+      for (const sx of [-1, 1]) ball(head, stripes, [sx * 0.1, 0.06, -0.06], [0.06, 0.018, 0.1]);
+    }
+
+    // A hair tail in three strands.
+    const tail = new THREE.Group();
+    tail.position.set(0, 0.28, -0.38);
+    rider.add(tail);
+    for (const sx of [-1, 0, 1]) limb(tail, mane, [0, 0, 0], [sx * 0.06, -0.32, -0.42], 0.055);
+
+    const seed = Math.random() * 10;
+    rider.userData.animate = (time, s) => {
+      const stream = THREE.MathUtils.clamp(s.speed / 48, 0, 1);
+      body.rotation.x = 0.06 + stream * 0.12;
+      head.position.y = 1.12 - stream * 0.06 + Math.sin(time * 2.4 + seed) * 0.012;
+      head.rotation.set(0.75 + stream * 0.25, Math.sin(time * 0.7 + seed) * 0.15 * (1 - stream), -s.lean * 0.3);
+      tail.rotation.set(-stream * 0.9, Math.sin(time * (3 + stream * 9) + seed) * 0.3, 0);
+    };
+    return rider;
+  };
+}
+
 export const ROSTER = [
   { id: 'cactus', name: '仙人掌先生', icon: '🌵', build: buildCactusMister },
   { id: 'coin', name: '硬幣先生', icon: '🪙', build: buildCoinMister },
@@ -155,4 +256,4 @@ export const ROSTER = [
   { id: 'whiteCat', name: '白貓', icon: '🐱' },
   { id: 'blackCat', name: '黑貓', icon: '🐈‍⬛' },
   { id: 'frog', name: '青蛙', icon: '🐸' },
-].map((r) => ({ ...r, build: r.build ?? buildAnimalRider(SPECIES[r.id]) }));
+].map((r) => ({ ...r, build: r.build ?? (HORSES[r.id] ? buildHorse(HORSES[r.id]) : buildAnimalRider(SPECIES[r.id])) }));
