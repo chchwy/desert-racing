@@ -13,6 +13,7 @@ import { buildJailProps } from './jail.js';
 import { buildPenaltyProps } from './penalty.js';
 import { addCacti, setWithered } from './cactus.js';
 import { addOutside, density } from './outside.js';
+import { addHouses, HOUSES_HERE } from './houses.js';
 import { buildChunkCoins, collectChunkCoins, updateChunkCoins, coinsNear, COIN_R } from './coins.js';
 
 export const CHUNK_SIZE = 200;
@@ -475,6 +476,7 @@ export class Terrain {
         : addCacti(props, cx, cz, CHUNK_SIZE, heightAt);
       for (const c of props.cacti) if (this.withered.has(c.id)) setWithered(c, true);
     }
+    if (HOUSES_HERE) addHouses(props, cx, cz, CHUNK_SIZE, heightAt);
     const key = this.key(cx, cz);
     for (const b of props.breakables) {
       if (this.broken.has(key + ':' + b.id)) breakProp(props, b);

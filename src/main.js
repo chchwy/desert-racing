@@ -33,6 +33,7 @@ import { Chooser } from './chooser.js';
 import { clock, Nightfall, skipToMorning } from './daynight.js';
 import { Ghosts } from './ghosts.js';
 import { House, drawClock } from './house.js';
+import { setWindowGlow } from './houses.js';
 import { TntField, REACH as TNT_REACH } from './tnt.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
@@ -1252,6 +1253,7 @@ function frame(timestamp) {
   sea?.update(time, camera);
   nightfall.apply(day.dark);
   house.update(day.dark);
+  setWindowGlow(day.dark);
   sky.position.copy(camera.position);
   sky.material.uniforms.uTime.value = time;
   sun.position.copy(player.pos).addScaledVector(SUN_DIR, 120);
