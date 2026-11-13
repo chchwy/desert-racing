@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SEAT, ball, buildAnimalRider, cone, limb } from './animals.js';
+import { tntCrate } from '../tnt.js';
 
 // The riders the player picks from at the start. Kept apart from SPECIES, whose fur
 // colors also paint the swarm.
@@ -174,6 +175,55 @@ function buildCoinMister(parent) {
   return rider;
 }
 
+// 炸彈方塊人: a charcoal box body and head with glowing orange eyes, a lit fuse on top,
+// hugging a 炸藥 crate against the hull.
+function buildBomber(parent) {
+  const rider = new THREE.Group();
+  rider.position.copy(SEAT);
+  parent.add(rider);
+  const body = new THREE.Group();
+  rider.add(body);
+  const coal = new THREE.MeshStandardMaterial({ color: 0x2c2a30, roughness: 0.6, metalness: 0.2 });
+  const glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.0, 0.2) });
+  const boxAt = (parent, mat, w, h, d, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    parent.add(m);
+    return m;
+  };
+  boxAt(body, coal, 0.5, 0.55, 0.4, 0, 0.45, 0.02);
+  const crate = tntCrate(0.42);
+  crate.position.set(0, 0.48, 0.42);
+  crate.castShadow = true;
+  body.add(crate);
+  for (const sx of [-1, 1]) {
+    boxAt(body, coal, 0.12, 0.12, 0.38, sx * 0.29, 0.56, 0.3);
+    boxAt(rider, coal, 0.15, 0.15, 0.5, sx * 0.17, 0.18, 0.2);
+    boxAt(rider, coal, 0.14, 0.4, 0.14, sx * 0.2, -0.02, 0.44);
+  }
+  const head = new THREE.Group();
+  head.position.y = 0.98;
+  head.userData.y = 0.98;
+  rider.add(head);
+  boxAt(head, coal, 0.46, 0.42, 0.42, 0, 0, 0);
+  for (const sx of [-1, 1]) boxAt(head, glow, 0.1, 0.07, 0.02, sx * 0.11, 0.05, 0.215);
+  for (let k = 0; k < 4; k++) boxAt(head, glow, 0.06, 0.03, 0.02, -0.09 + k * 0.06, -0.1 + (k % 2) * 0.03, 0.215);
+  limb(head, 0x8a6a40, [0, 0.21, 0], [0.05, 0.42, -0.04], 0.025);
+  const spark = ball(head, 0xffffff, [0.05, 0.45, -0.04], 0.05);
+  spark.material = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.8, 0.4) });
+
+  const seed = Math.random() * 10;
+  rider.userData.animate = (time, s) => {
+    const stream = THREE.MathUtils.clamp(s.speed / 48, 0, 1);
+    body.rotation.x = 0.04 + stream * 0.12;
+    head.rotation.set(stream * 0.08, Math.sin(time * 0.7 + seed) * 0.12 * (1 - stream), -s.lean * 0.3);
+    head.position.y = head.userData.y + Math.sin(time * 2.4 + seed) * 0.015;
+    spark.scale.setScalar(0.05 * (0.7 + Math.abs(Math.sin(time * 23 + seed)) * 0.6));
+  };
+  return rider;
+}
+
 const HORSES = {
   horse: { coat: 0x8b5a33, muzzle: 0x5e3b22, mane: 0x2b1d14, hoof: 0x2a221c },
   zebra: { coat: 0xf2f1ec, muzzle: 0x26262a, mane: 0x1c1c20, hoof: 0x1c1c20, stripes: 0x1c1c20 },
@@ -288,4 +338,5 @@ export const ROSTER = [
   { id: 'whiteCat', name: '白貓', icon: '🐱' },
   { id: 'blackCat', name: '黑貓', icon: '🐈‍⬛' },
   { id: 'frog', name: '青蛙', icon: '🐸' },
+  { id: 'bomber', name: '炸彈方塊人', icon: '💣', build: buildBomber },
 ].map((r) => ({ ...r, build: r.build ?? (HORSES[r.id] ? buildHorse(HORSES[r.id]) : buildAnimalRider(SPECIES[r.id])) }));

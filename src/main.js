@@ -33,6 +33,7 @@ import { Chooser } from './chooser.js';
 import { clock, Nightfall, skipToMorning } from './daynight.js';
 import { Ghosts } from './ghosts.js';
 import { House } from './house.js';
+import { TntField, REACH as TNT_REACH } from './tnt.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
 import { ChaseCamera } from './camera.js';
@@ -629,7 +630,7 @@ const GRACE = 2.5; // seconds after a respawn before bombs count
 let deadTimer = 0;
 let grace = GRACE;
 function inLava() {
-  if (!LEVEL.lava || player.gap > 2.5) return false;
+  if (!LEVEL.lava || player.gap > 2.5 || bomber()) return false;
   if (lavaVent?.onDeck(player.pos.x, player.pos.z)) return false;
   if (lavaAt(player.pos.x, player.pos.z) > 0.5) return true;
   return !!lavaVent && Math.hypot(player.pos.x - lavaVent.x, player.pos.z - lavaVent.z) < lavaVent.r * 0.95;
@@ -852,6 +853,46 @@ function houseStep(day, dt, time) {
 // Open for the player at night until it has slept there; solid otherwise.
 const houseOpen = (day) => day.night && home.slept !== day.cycle;
 
+// 炸彈方塊人 walks through lava, sets 炸藥 crates down with L, and blows one up when
+// any shot (or lava) reaches it: every rider within TNT_REACH pays the player TNT_FINE.
+// Locked up, N blows himself up and out: from the coin jail to the jail, from the jail
+// to the first level.
+const TNT_FINE = 50000;
+const tnt = new TntField(scene);
+const bomber = () => chooser.current.id === 'bomber';
+function blowTnt(crate) {
+  const { x, y, z } = crate.target;
+  tnt.remove(crate);
+  boom({ x, baseY: y, z });
+  let caught = 0;
+  const near = (rx, rz) => Math.hypot(rx - x, rz - z) < TNT_REACH;
+  for (let i = 0; i < swarm.n; i++) if (swarm.state[i] === DRIVE && near(swarm.x[i], swarm.z[i])) caught++;
+  rivals.list.forEach((r) => {
+    if (r.active && near(r.body.pos.x, r.body.pos.z)) caught++;
+  });
+  if (caught) {
+    addCoins(caught * TNT_FINE);
+    chime();
+  }
+  showAlert(caught ? `炸藥爆炸！炸到 ${caught} 個人，每人罰 5 萬給你` : '炸藥爆炸！', 2, 'warn');
+}
+function tntStep() {
+  if (!bomber()) return;
+  if (input.hit('KeyL') && deadTimer <= 0 && !sleeping && leaving <= 0) {
+    tnt.drop(player.pos.x, terrain.floorAt(player.pos.x, player.pos.z), player.pos.z);
+  }
+  if (LEVEL.lava) {
+    for (const c of [...tnt.crates]) if (lavaAt(c.target.x, c.target.z) > 0.5) blowTnt(c);
+  }
+  if (LOCKED && input.hit('KeyN') && deadTimer <= 0 && !sleeping && leaving <= 0) {
+    boom({ x: player.pos.x, baseY: player.pos.y, z: player.pos.z });
+    player.vel.y += 14;
+    war.send(0, IN_PENALTY ? JAIL : 0);
+    showAlert(IN_PENALTY ? '自爆！炸回監牢' : '自爆！炸回第一關沙漠', 2, 'death');
+    leaving = 1.6;
+  }
+}
+
 // While the picker is open the world waits and the camera circles in front of the bike,
 // framed to the right of the cards. Arrows or the pad step through riders, Enter or A
 // confirms.
@@ -887,9 +928,10 @@ function showRider(time) {
 function frame(timestamp) {
   timer.update(timestamp);
   input.poll();
-  if (input.hit('KeyL')) {
+  // P pauses; so does L, except for 炸彈方塊人, whose L sets down a crate.
+  if (input.hit('KeyP') || (input.hit('KeyL') && !bomber())) {
     paused = !paused;
-    if (paused) showAlert('暫停中 · 按 L 繼續', 1e9, 'warn');
+    if (paused) showAlert('暫停中 · 按 P 繼續', 1e9, 'warn');
     else hud.alert.className = 'alert';
   }
   if (paused) {
@@ -947,6 +989,7 @@ function frame(timestamp) {
   const colliders = terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
   const day = clock();
   houseStep(day, dt, time);
+  tntStep();
   if (house.shown && !houseOpen(day)) colliders.push(house.collider);
   for (let i = 0; i < 2 && !dead && !sleeping; i++) {
     player.update(dt / 2, input, colliders, (x, z, n) => terrain.floorAt(x, z, n));
@@ -1076,10 +1119,15 @@ function frame(timestamp) {
   }
   rivals.targets(weapons.targets);
   swarm.targets(weapons.targets);
+  tnt.targets(weapons.targets);
   if (LEVEL.cacti) {
     for (const t of weapons.targets) if (t !== playerTarget && terrain.witherAt(t.x, t.z) && IN_PENALTY) prickRider(t.id);
   }
   weapons.update(dt, camera.position, (t, kind, shooter) => {
+    if (t.crate) {
+      blowTnt(t.crate);
+      return;
+    }
     if (t.id === 0) {
       playerShot(kind);
       return;
