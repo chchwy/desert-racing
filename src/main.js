@@ -667,11 +667,13 @@ function playerShot(kind) {
   leaving = 1.6;
 }
 
-// A green cactus sticks a spine on the bike and withers; a yellow one, hit before by you or
-// anyone else, gives nothing. A bike full of spines starts you over, with every cactus green.
-// Outside the coin jail a spine sends you back to the jail, and the one that fills the bike
-// sends you back to the desert; the other riders count theirs in war.pricks.
+// A green cactus sticks a spine on the bike, costs CACTUS_HIT coins and withers; a yellow
+// one, hit before by you or anyone else, gives nothing. The spine that fills the bike
+// locks you in the jail, with every cactus green again. 仙人掌先生 is a cactus himself, so
+// cacti leave him alone. The other riders count theirs in war.pricks: outside the coin
+// jail a spine sends one back to the jail, and the one that fills it to the desert.
 const SPINES_FULL = 30;
+const CACTUS_HIT = 300;
 function prickRider(id) {
   const full = ++war.pricks[id] >= SPINES_FULL;
   if (full) war.pricks[id] = 0;
@@ -682,21 +684,21 @@ hud.spines.textContent = war.spines.length;
 hud.spines.parentElement.hidden = !LEVEL.cacti;
 terrain.witherIds(war.spines);
 function stickSpines(touching) {
+  if (chooser.current.id === 'cactus') return;
   for (const c of touching) {
     if (c.withered || leaving > 0 || deadTimer > 0) continue;
     terrain.wither(c);
     war.spines.push(c.id);
     crash(0.2);
-    if (IN_PENALTY) {
-      const full = war.spines.length >= SPINES_FULL;
-      if (full) war.spines = [];
-      war.send(0, full ? 0 : JAIL);
-      showAlert(full ? `車上插滿 ${SPINES_FULL} 根刺！回第一關沙漠` : `撞到仙人掌！回監牢（${war.spines.length} / ${SPINES_FULL} 根刺）`, 2, 'death');
-      leaving = 1.6;
-    } else if (war.spines.length >= SPINES_FULL) {
+    setCoins(coinCount() - CACTUS_HIT);
+    if (war.spines.length >= SPINES_FULL) {
       war.spines = [];
       terrain.reviveCacti();
-      die(`車上插滿 ${SPINES_FULL} 根刺！重新開始`);
+      war.send(0, JAIL);
+      showAlert(`車上插滿 ${SPINES_FULL} 根刺！關進監牢`, 2, 'death');
+      leaving = 1.6;
+    } else {
+      showAlert(`撞到仙人掌！罰 ${CACTUS_HIT} 枚（${war.spines.length} / ${SPINES_FULL} 根刺）`, 1.5, 'warn');
     }
     bike.setSpines(war.spines.length);
     hud.spines.textContent = war.spines.length;
