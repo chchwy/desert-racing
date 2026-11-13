@@ -210,6 +210,27 @@ function prick(id) {
   else war.send(id, 0);
   showAlert('被尖刺刺到！沒有 3,500 萬，重新開始', 1.5, 'warn');
 }
+// Riding as 仙人掌先生, any rider that bumps the bike pays CACTUS_FINE to the player, at
+// most once every CACTUS_GAP seconds per rider. Riders keep no coins, so the player gets
+// it all. A rider on the back spikes is pricked instead. In the desert the bump also
+// sticks one spine in the rider, counted like the cacti (war.pricks); the thirtieth
+// starts it over. The cactus dries yellow and greens again over about 30 seconds.
+const CACTUS_FINE = 300000;
+const CACTUS_REACH = 2.8; // metres between centers
+const CACTUS_GAP = 3;
+const cactusFined = new Map(); // rider id -> time of its last fine
+function cactusBump(id, x, z, time) {
+  if (Math.hypot(x - player.pos.x, z - player.pos.z) > CACTUS_REACH) return;
+  if (time - (cactusFined.get(id) ?? -Infinity) < CACTUS_GAP) return;
+  cactusFined.set(id, time);
+  addCoins(CACTUS_FINE);
+  bike.rider.userData.hit?.();
+  if (LEVEL.id === 'desert' && ++war.pricks[id] >= SPINES_FULL) {
+    war.pricks[id] = 0;
+    placeRider(id);
+  }
+  showAlert(LEVEL.id === 'desert' ? '撞到仙人掌先生！罰 30 萬枚，插一根刺' : '撞到仙人掌先生！罰 30 萬枚', 1.5, 'warn');
+}
 // In jail, coins are thrown into the pens from outside and pile up where they land; in
 // the penalty jail they drop from a machine over every room. Pick up BAIL of them to
 // get out: from the jail back to the first level, from the penalty jail back to the
@@ -882,6 +903,15 @@ function frame(timestamp) {
       if (r.active && spiked(r.body.pos.x, r.body.pos.z, f)) prick(war.rivalBase + i);
     });
   }
+  if (chooser.current.id === 'cactus' && !dead) {
+    const f = player.forward;
+    for (let i = 0; i < swarm.n; i++) {
+      if (swarm.state[i] === DRIVE && (LOCKED || !spiked(swarm.x[i], swarm.z[i], f))) cactusBump(war.swarmBase + i, swarm.x[i], swarm.z[i], time);
+    }
+    rivals.list.forEach((r, i) => {
+      if (r.active && (LOCKED || !spiked(r.body.pos.x, r.body.pos.z, f))) cactusBump(war.rivalBase + i, r.body.pos.x, r.body.pos.z, time);
+    });
+  }
   // The exit at the end of the big-coin trail takes the rider back a level.
   if (exitGate) {
     exitGate.update(time);
@@ -1060,5 +1090,5 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins };
+window.__game = { player, bike, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins };
 requestAnimationFrame(frame);

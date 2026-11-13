@@ -27,7 +27,7 @@ URL flags, read in `src/main.js`:
 - `?nopost` skips bloom and FXAA. `?nobloom` skips bloom only.
 - An MSAA render target plus `UnrealBloomPass` draws a blank frame here. AA stays on `FXAAPass`.
 
-`window.__game` is `{ player, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
+`window.__game` is `{ player, bike, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins }` (`eruption` is null off the volcano). The speed and gap readout refreshes about every 80 ms. The fps line, including the camera mode name, refreshes once a second.
 
 A ~98 MB reference mp4 sits untracked in the repo root. The game does not load it. Do not commit it.
 
@@ -163,7 +163,7 @@ Wind is a vertex shader, not a second mesh and not a CPU pass over the vertices.
 
 The tail bends as a 5-joint chain (`uTailPivot`), rotated tip-first. It does not translate vertices. The cat mesh is two unstitched shells, and the tail runs across both. `tailDistances` walks the surface from the tip with Dijkstra, which only reaches one shell. That walk traces the spine and the tube radius. Every vertex inside the tube, on either shell, takes `aWind.x` from its closest point on the spine. Keep the distances in a `Float64Array` and settle each vertex once: a `Float32Array` made the heap loop never end and froze the page at load.
 
-The player no longer rides the cat. `src/chooser.js` opens a picker on a fresh tab (sessionStorage `desert-racing-rider-picked`, so level reloads skip it) and from the × beside the headline; the choice is kept in localStorage `desert-racing-rider`. While it is open `main.js` freezes the world and `showRider` circles the camera in front of the bike, turned toward the sun. The riders are `ROSTER` in `src/riders/roster.js`: 仙人掌先生 and 硬幣先生 are built there, horse and zebra have their own `buildHorse` (arched neck, nose-down long face, hooves), the other animals go through `buildAnimalRider` with their own specs (kept out of `SPECIES`, whose furs color the swarm). `Bike.setRider` swaps the rider in place. The cat GLB is still the `Bike` default but nothing passes it now.
+The player no longer rides the cat. `src/chooser.js` opens a picker on a fresh tab (sessionStorage `desert-racing-rider-picked`, so level reloads skip it) and from the × beside the headline; the choice is kept in localStorage `desert-racing-rider`. While it is open `main.js` freezes the world and `showRider` circles the camera in front of the bike, turned toward the sun. The riders are `ROSTER` in `src/riders/roster.js`: 仙人掌先生 and 硬幣先生 are built there, horse and zebra have their own `buildHorse` (arched neck, nose-down long face, hooves), the other animals go through `buildAnimalRider` with their own specs (kept out of `SPECIES`, whose furs color the swarm). `Bike.setRider` swaps the rider in place. Riding 仙人掌先生, a rider that bumps the bike pays the player 300,000 (`CACTUS_FINE`), in the desert also takes a spine in `war.pricks`, and `rider.userData.hit` dries the cactus yellow for about 30 s. The cat GLB is still the `Bike` default but nothing passes it now.
 
 `Bike.update` calls `this.rider.userData.animate(time, s)` with `{ throttle, boost, speed, lean }`. The old capsule rider and its twin-tail loop are gone.
 

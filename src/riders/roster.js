@@ -15,6 +15,7 @@ const SPECIES = {
 };
 
 const GOLD = 0xf0b429;
+const Y = new THREE.Vector3(0, 1, 0);
 const HAT = 0x1d1b22;
 
 function face(parent, z, y, r) {
@@ -63,6 +64,11 @@ function bobbing(rider, body, head) {
   };
 }
 
+const RIB = 0x2f7d36;
+const DRY = 0xc9a94a;
+const DRY_RIB = 0xa8883a;
+const DRY_TIME = 30;
+
 // 仙人掌先生: a green column in a clay pot, ribbed and spined, with a flower on top.
 function buildCactusMister(parent) {
   const rider = new THREE.Group();
@@ -82,22 +88,31 @@ function buildCactusMister(parent) {
   limb(head, green, [0, 0.2, 0], [0, 1.25, 0.08], 0.26);
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * Math.PI * 2;
-    ball(head, 0x2f7d36, [Math.sin(a) * 0.235, 0.72, 0.04 + Math.cos(a) * 0.235], [0.04, 0.42, 0.04]);
+    ball(head, RIB, [Math.sin(a) * 0.235, 0.72, 0.04 + Math.cos(a) * 0.235], [0.04, 0.42, 0.04]);
   }
+  // Spines all the way round, front, back and sides, leaving the face clear.
   const rng = (i) => Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
-  for (let i = 0; i < 40; i++) {
+  const spine = (x, y, z, out) => {
+    const m = cone(head, 0xfff6d8, [x, y, z], 0.012, 0.1);
+    m.quaternion.setFromUnitVectors(Y, out);
+  };
+  for (let i = 0; i < 110; i++) {
     const a = rng(i) * Math.PI * 2;
-    const y = 0.35 + rng(i + 100) * 0.85;
+    const y = 0.3 + rng(i + 100) * 0.95;
+    if (Math.cos(a) > 0.6 && y > 0.75 && y < 1.15) continue;
     const out = new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
-    const p = out.clone().multiplyScalar(0.27);
-    const m = cone(head, 0xfff6d8, [p.x, y, p.z + 0.04], 0.012, 0.09);
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), out);
+    spine(out.x * 0.27, y, 0.04 + out.z * 0.27, out);
   }
   face(head, 0.3, 0.98, 0.3);
-  // Cactus arms: out to the side, then up.
+  // Cactus arms: out to the side, then up, spined too.
   for (const sx of [-1, 1]) {
     limb(head, green, [sx * 0.2, 0.62, 0.08], [sx * 0.46, 0.62, 0.12], 0.09);
     limb(head, green, [sx * 0.46, 0.62, 0.12], [sx * 0.48, 0.95, 0.14], 0.09);
+    for (let k = 0; k < 14; k++) {
+      const a = rng(k + sx * 50 + 300) * Math.PI * 2;
+      const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      spine(sx * 0.47 + out.x * 0.1, 0.6 + (k / 14) * 0.4, 0.13 + out.z * 0.1, out);
+    }
   }
   for (let k = 0; k < 5; k++) {
     const a = (k / 5) * Math.PI * 2;
@@ -105,10 +120,28 @@ function buildCactusMister(parent) {
   }
   ball(head, 0xffd84a, [0, 1.52, 0.08], 0.045);
 
+  // A bump dries the green parts yellow; they green again over DRY_TIME seconds.
+  const greens = [];
+  head.traverse((o) => {
+    if (!o.isMesh) return;
+    const hex = o.material.color.getHex();
+    if (hex !== green && hex !== RIB) return;
+    o.material = o.material.clone();
+    greens.push({ color: o.material.color, from: new THREE.Color(hex), to: new THREE.Color(hex === green ? DRY : DRY_RIB) });
+  });
+  let dry = 0;
+  let last = null;
+  rider.userData.hit = () => {
+    dry = 1;
+  };
+
   const seed = Math.random() * 10;
   rider.userData.animate = (time, s) => {
     const stream = THREE.MathUtils.clamp(s.speed / 48, 0, 1);
     head.rotation.set(0.05 + stream * 0.25, Math.sin(time * 0.8 + seed) * 0.1 * (1 - stream), -s.lean * 0.3);
+    if (last !== null) dry = Math.max(dry - (time - last) / DRY_TIME, 0);
+    last = time;
+    for (const g of greens) g.color.lerpColors(g.from, g.to, Math.min(dry * 1.5, 1));
   };
   return rider;
 }
@@ -146,7 +179,6 @@ const HORSES = {
   zebra: { coat: 0xf2f1ec, muzzle: 0x26262a, mane: 0x1c1c20, hoof: 0x1c1c20, stripes: 0x1c1c20 },
 };
 
-const Y = new THREE.Vector3(0, 1, 0);
 
 // A hoof: a short dark cylinder on the end of a leg, pointing along the leg.
 function hoof(parent, color, at, toward) {
