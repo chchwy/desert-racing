@@ -151,3 +151,6 @@ html, body {
 }
 .choosing #hud { display: none; }
 .clock { margin-top: 8px; font-size: 13px; letter-spacing: 0.12em; opacity: 0.9; }
+.clock-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.clock-row .clock { margin-top: 0; }
+#clock-face { width: 64px; height: 64px; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.4)); }

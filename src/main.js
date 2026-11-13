@@ -32,7 +32,7 @@ import { Bike } from './bike.js';
 import { Chooser } from './chooser.js';
 import { clock, Nightfall, skipToMorning } from './daynight.js';
 import { Ghosts } from './ghosts.js';
-import { House } from './house.js';
+import { House, drawClock } from './house.js';
 import { TntField, REACH as TNT_REACH } from './tnt.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
 import { Input, Player } from './player.js';
@@ -410,6 +410,7 @@ const hud = {
   nono: document.getElementById('nono'),
   coinCount: document.getElementById('coin-count'),
   clock: document.getElementById('clock'),
+  clockFace: document.getElementById('clock-face').getContext('2d'),
   alert: document.getElementById('alert'),
   burn: document.getElementById('burn'),
 };
@@ -1271,6 +1272,7 @@ function frame(timestamp) {
     hud.state.textContent = player.stateLabel;
     const m = Math.floor(day.left / 60);
     const sec = String(Math.floor(day.left % 60)).padStart(2, '0');
+    drawClock(hud.clockFace, day.hour);
     const hh = Math.floor(day.hour);
     const mm = String(Math.floor((day.hour % 1) * 60)).padStart(2, '0');
     hud.clock.textContent = `${day.night ? '🌙 晚上' : '☀️ 白天'} ${hh}:${mm} · ${m}:${sec} 後${day.night ? '天亮' : '天黑'}`;

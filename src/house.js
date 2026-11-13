@@ -29,7 +29,7 @@ function sign(text, width, bg, fg) {
 }
 
 // A round clock face with hour and minute hands, for a 24-hour hour h.
-function drawClock(g, h) {
+export function drawClock(g, h) {
   const r = 60;
   g.clearRect(0, 0, 128, 128);
   g.fillStyle = '#fbf5e6';
