@@ -54,6 +54,14 @@ html, body {
   height: 100%; width: 100%; background: #ff2a20;
   box-shadow: 0 0 10px rgba(255, 42, 32, 0.9); transform-origin: left;
 }
+.hunger.low .hunger-track {
+  border-color: #ff6050;
+  animation: hunger-blink 0.38s ease-in-out infinite alternate;
+}
+@keyframes hunger-blink {
+  from { box-shadow: 0 0 4px rgba(255, 40, 30, 0.4); }
+  to { box-shadow: 0 0 14px rgba(255, 60, 40, 1); }
+}
 
 .levels {
   position: absolute; left: 50%; top: calc(2.2vh + 22px); transform: translateX(-50%);

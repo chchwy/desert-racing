@@ -409,6 +409,7 @@ const hud = {
   state: document.getElementById('state'),
   energy: document.getElementById('energy'),
   hunger: document.getElementById('hunger'),
+  hungerBar: document.getElementById('hunger').closest('.hunger'),
   fps: document.getElementById('fps'),
   kills: document.getElementById('kills'),
   caught: document.getElementById('caught'),
@@ -749,6 +750,7 @@ const BED_PARK_TIME = 2.0;
 const HOUSE_AHEAD = 45;
 const HOUSE_DROP = 600; // metres away before the player's house moves up ahead again
 const HUNGER_DECAY = 1 / 210; // ~3.5 minutes from full red to empty
+const STARVE_FINE = 300;
 const HOUSE_KEY = 'desert-racing-house';
 const house = new House(scene);
 const interior = new InteriorWorld(scene);
@@ -770,6 +772,8 @@ let sleeping = 0; // seconds left asleep; 0 awake
 let indoors = false;
 let hunger = 1; // 1 = full red (very full), 0 = hungry
 let hungryNag = 0;
+let lastMealTag = '';
+const mealPeriod = (h) => (h >= 6 && h < 9 ? '早上' : h >= 11.5 && h < 14 ? '中午' : h >= 17.5 && h < 20.5 ? '晚上' : null);
 let doorCooldown = 0;
 let bedParkTimer = 0;
 let activeBed = null;
@@ -1078,14 +1082,35 @@ function frame(timestamp) {
   }
   grace = Math.max(grace - dt, 0);
 
-  if (!dead && !sleeping) {
-    hunger = Math.max(0, hunger - HUNGER_DECAY * dt);
-    if (hunger <= 0) player.vel.multiplyScalar(Math.max(0, 1 - 0.15 * dt));
-    if (hunger < 0.3 && !indoors) {
+  const day = clock();
+  if (!dead && !sleeping && leaving <= 0) {
+    const meal = mealPeriod(day.hour);
+    if (meal) {
+      const tag = `${day.cycle}-${meal}`;
+      if (lastMealTag !== tag) {
+        lastMealTag = tag;
+        if (hunger > 0.16) hunger = 0.16;
+        hungryNag = 8;
+        showAlert(`${meal}到了！肚子超餓，快進房子廚房吃東西`, 2.8, 'warn');
+      }
+    }
+    hunger = Math.max(0, hunger - dt * (hunger <= 0.22 ? 1 / 70 : HUNGER_DECAY));
+    if (hunger <= 0.22 && hunger > 0) {
       hungryNag -= dt;
       if (hungryNag <= 0) {
-        hungryNag = 22;
-        showAlert('肚子餓了！找棟房子進去廚房吃東西', 2.5, 'warn');
+        hungryNag = 6;
+        showAlert('快餓扁了！剩最後一點點，快進房子廚房吃東西！', 2.4, 'warn');
+      }
+    }
+    if (hunger <= 0) {
+      setCoins(coinCount() - STARVE_FINE);
+      if (!IN_PENALTY && war.winner == null) {
+        war.send(0, PENALTY);
+        showAlert(`餓昏了！扣 ${STARVE_FINE} 枚，送進超大監牢！`, 2.2, 'death');
+        leaving = 1.6;
+      } else {
+        showAlert(`餓昏了！扣 ${STARVE_FINE} 枚，快進房子廚房吃東西`, 2.2, 'death');
+        hunger = 0.25;
       }
     }
   }
@@ -1109,7 +1134,6 @@ function frame(timestamp) {
   // The hidden gate in the jail fence opens only for a rider rich enough to see the route.
   const seesRoute = coinCount() >= SEE_ROUTE;
   const colliders = indoors ? [] : terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
-  const day = clock();
   houseStep(day, dt, time, dead);
   if (!indoors) tntStep();
   if (!indoors && house.shown) colliders.push(house.collider);
@@ -1425,6 +1449,7 @@ function frame(timestamp) {
     hud.clock.textContent = `${day.night ? '🌙 晚上' : '☀️ 白天'} ${hh}:${mm} · ${m}:${sec} 後${day.night ? '天亮' : '天黑'}`;
     hud.energy.style.transform = `scaleX(${player.energy.toFixed(3)})`;
     hud.hunger.style.transform = `scaleX(${hunger.toFixed(3)})`;
+    hud.hungerBar.classList.toggle('low', hunger <= 0.22);
   }
   if (fpsAcc > 1) {
     // 擊破: foes you shot; 捕獲: foes in jail; 夥伴: friends still free.
