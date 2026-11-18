@@ -22,6 +22,7 @@ import { formatCoinCount, coinCount, setCoins, addCoins, coinExit } from './coin
 import { ExitGate } from './exit.js';
 import { War, JAIL, PENALTY } from './war.js';
 import { riderNames, renderLeaderboard } from './rankings.js';
+import { LANGUAGES, getLang, setLang, t, dict } from './i18n.js';
 import { Weapons, AIR, GUN } from './weapons.js';
 import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
 import { Tears } from './tears.js';
@@ -399,6 +400,7 @@ document.getElementById('sub').textContent = LEVEL.sub;
 
 // Level picker: buttons, or the number keys. Picking reloads the page on that level.
 const picker = document.getElementById('levels');
+const levelBtns = [];
 PICKER.forEach((id, i) => {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -406,7 +408,62 @@ PICKER.forEach((id, i) => {
   if (id === LEVEL.id) btn.classList.add('active');
   btn.addEventListener('click', () => switchLevel(id));
   picker.appendChild(btn);
+  levelBtns.push({ id, i, btn });
 });
+
+function applyLanguage() {
+  const d = dict();
+  document.documentElement.lang = getLang();
+  document.getElementById('headline').textContent = LEVEL.id === 'penalty' ? t('headlinePenalty') : t('headline');
+  document.getElementById('sub').textContent = d.sub?.[LEVEL.id] ?? LEVEL.sub;
+  document.getElementById('levels-label').textContent = t('levelsLabel');
+  levelBtns.forEach(({ id, i, btn }) => {
+    btn.textContent = `${i + 1} ${d.levels?.[id] ?? LEVELS[id].name}`;
+  });
+  document.getElementById('coin-label').textContent = t('coins');
+  document.getElementById('hunger-label').textContent = t('hunger');
+  document.getElementById('gap-prefix').textContent = t('gapPrefix');
+  document.getElementById('kills-label').textContent = t('kills');
+  document.getElementById('caught-label').textContent = t('caught');
+  document.getElementById('allies-label').textContent = t('allies');
+  document.getElementById('spines-label').textContent = t('spines');
+  document.getElementById('help').innerHTML = t('help');
+  document.getElementById('rechoose').title = t('rechoose');
+  document.getElementById('settings-btn').title = t('settings');
+  document.getElementById('lang-title').textContent = t('langTitle');
+  document.getElementById('lang-close').textContent = t('close');
+  chooser.refreshLabels();
+  if (!leaderboardEl.hidden) renderLeaderboard(leaderboardEl, war, names, restartWar);
+}
+
+// Language settings modal (opened by the screwdriver button next to ×)
+const langModal = document.getElementById('lang-modal');
+const langGrid = document.getElementById('lang-grid');
+const langButtons = LANGUAGES.map((l) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'lang-btn';
+  btn.dataset.lang = l.code;
+  btn.innerHTML = `<span>${l.flag}</span><span>${l.label}</span>`;
+  btn.addEventListener('click', () => {
+    setLang(l.code);
+    langButtons.forEach((b) => b.classList.toggle('active', b.dataset.lang === getLang()));
+    applyLanguage();
+  });
+  langGrid.appendChild(btn);
+  return btn;
+});
+document.getElementById('settings-btn').addEventListener('click', () => {
+  langButtons.forEach((b) => b.classList.toggle('active', b.dataset.lang === getLang()));
+  langModal.hidden = false;
+});
+document.getElementById('lang-close').addEventListener('click', () => {
+  langModal.hidden = true;
+});
+langModal.addEventListener('click', (e) => {
+  if (e.target === langModal) langModal.hidden = true;
+});
+applyLanguage();
 addEventListener('keydown', (e) => {
   const i = e.code.startsWith('Digit') ? Number(e.code.slice(5)) - 1 : -1;
   if (i >= 0 && i < PICKER.length && !chooser.open) switchLevel(PICKER[i]);
@@ -1450,7 +1507,7 @@ function frame(timestamp) {
     drawClock(hud.clockFace, day.hour);
     const hh = Math.floor(day.hour);
     const mm = String(Math.floor((day.hour % 1) * 60)).padStart(2, '0');
-    hud.clock.textContent = `${day.night ? '🌙 晚上' : '☀️ 白天'} ${hh}:${mm} · ${m}:${sec} 後${day.night ? '天亮' : '天黑'}`;
+    hud.clock.textContent = `${day.night ? t('night') : t('day')} ${hh}:${mm} · ${m}:${sec} ${day.night ? t('untilDawn') : t('untilDusk')}`;
     hud.energy.style.transform = `scaleX(${player.energy.toFixed(3)})`;
     hud.hunger.style.transform = `scaleX(${hunger.toFixed(3)})`;
     hud.hungerBar.classList.toggle('low', hunger <= 0.22);

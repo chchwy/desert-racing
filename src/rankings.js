@@ -1,6 +1,7 @@
 import { mulberry32 } from './noise.js';
 import { FRIEND, FOE } from './teams.js';
 import { JAIL, PENALTY } from './war.js';
+import { t } from './i18n.js';
 
 const PREFIXES = [
   '閃電', '疾風', '赤焰', '極光', '暴走', '無敵', '黃金', '酷炫', '旋風', '星辰',
@@ -47,7 +48,7 @@ export function computeStandings(war, names) {
     const status = st === PENALTY ? '超大監牢' : st === JAIL ? '監牢' : `第 ${st + 1} 關`;
     const entry = {
       id: i,
-      name: names[i] ?? `騎士 ${i}`,
+      name: isPlayer ? t('drMoney') : (names[i] ?? `騎士 ${i}`),
       team: war.team[i],
       score,
       status,
@@ -67,9 +68,9 @@ export function computeStandings(war, names) {
 export function renderLeaderboard(el, war, names, onRestart) {
   const { red, blue, overallFirst } = computeStandings(war, names);
   const winLabel =
-    war.winner === FRIEND ? '紅隊獲勝！' : war.winner === FOE ? '藍隊獲勝！' : '雙方平手！';
+    war.winner === FRIEND ? t('redWin') : war.winner === FOE ? t('blueWin') : t('drawWin');
   const champText = overallFirst
-    ? `🏆 全場第一名：${overallFirst.name}（${overallFirst.team === FRIEND ? '紅隊' : '藍隊'} · ${overallFirst.score} 分）`
+    ? `${t('lbChamp')}：${overallFirst.name}（${overallFirst.team === FRIEND ? t('redTeam') : t('blueTeam')} · ${overallFirst.score} ${t('lbPts')}）`
     : '';
 
   const rowsHtml = (list) =>
@@ -81,7 +82,7 @@ export function renderLeaderboard(el, war, names, onRestart) {
           <span class="lb-rank">${medal}</span>
           <span class="lb-name">${r.name}</span>
           <span class="lb-status">${r.status}</span>
-          <span class="lb-score">${r.score} 分</span>
+          <span class="lb-score">${r.score} ${t('lbPts')}</span>
         </div>`;
       })
       .join('');
@@ -89,21 +90,21 @@ export function renderLeaderboard(el, war, names, onRestart) {
   el.innerHTML = `
     <div class="lb-panel">
       <div class="lb-head">
-        <div class="lb-title">${winLabel}兩隊名次榜</div>
+        <div class="lb-title">${winLabel} ${t('lbTitle')}</div>
         <div class="lb-champ">${champText}</div>
       </div>
       <div class="lb-cols">
         <div class="lb-col red">
-          <div class="lb-col-title">🔴 紅隊名次（共 ${red.length} 人）</div>
+          <div class="lb-col-title">${t('lbRedCol')}（${red.length} ${t('lbPeople')}）</div>
           <div class="lb-list">${rowsHtml(red)}</div>
         </div>
         <div class="lb-col blue">
-          <div class="lb-col-title">🔵 藍隊名次（共 ${blue.length} 人）</div>
+          <div class="lb-col-title">${t('lbBlueCol')}（${blue.length} ${t('lbPeople')}）</div>
           <div class="lb-list">${rowsHtml(blue)}</div>
         </div>
       </div>
       <div class="lb-foot">
-        <button type="button" class="lb-restart" id="lb-restart">再玩一場（Enter）</button>
+        <button type="button" class="lb-restart" id="lb-restart">${t('lbRestart')}</button>
       </div>
     </div>
   `;

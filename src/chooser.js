@@ -1,4 +1,5 @@
 import { ROSTER } from './riders/roster.js';
+import { dict, t } from './i18n.js';
 
 // The rider picker: a card per rider and 確認 at the bottom. It opens on a fresh tab
 // and from the × next to the headline. Level changes reload the page, so the tab
@@ -33,15 +34,28 @@ export class Chooser {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'chooser-card';
-      card.innerHTML = `<span class="chooser-icon">${r.icon}</span><span>${r.name}</span>`;
+      card.innerHTML = `<span class="chooser-icon">${r.icon}</span><span class="chooser-name">${r.name}</span>`;
       card.addEventListener('click', () => this.select(i));
       grid.appendChild(card);
       this.cards.push(card);
     });
     document.getElementById('chooser-ok').addEventListener('click', () => this.confirm());
     document.getElementById('rechoose').addEventListener('click', () => this.show());
+    this.refreshLabels();
     this.mark();
     this.setOpen(read(sessionStorage, PICKED_KEY) !== '1');
+  }
+
+  refreshLabels() {
+    const d = dict();
+    const title = document.getElementById('chooser-title');
+    if (title) title.textContent = t('chooserTitle');
+    const ok = document.getElementById('chooser-ok');
+    if (ok) ok.textContent = t('confirm');
+    this.cards.forEach((c, i) => {
+      const span = c.querySelector('.chooser-name');
+      if (span) span.textContent = d.riders?.[ROSTER[i].id] ?? ROSTER[i].name;
+    });
   }
 
   get current() {

@@ -15,29 +15,36 @@
         <div class="headline-row">
           <div class="headline" id="headline">拿錢博士 Go ！</div>
           <button type="button" class="rechoose" id="rechoose" title="換角色" aria-label="換角色">×</button>
+          <button type="button" class="rechoose settings-btn" id="settings-btn" title="設定語言" aria-label="設定語言">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 3l3 3-2 2-3-3 2-2z" />
+              <path d="M16 5l-5 5" />
+              <path d="M11.5 9.5l3 3L8 19a2.1 2.1 0 0 1-3-3l6.5-6.5z" fill="currentColor" fill-opacity="0.25" />
+            </svg>
+          </button>
         </div>
         <div class="sub" id="sub">懸浮機車原型 · 輝光＋沙塵 · 地形 endless</div>
-        <div class="coin-count" id="coin-count"><span class="coin-disc"></span>金幣 <b id="coins">0</b></div>
+        <div class="coin-count" id="coin-count"><span class="coin-disc"></span><span id="coin-label">金幣</span> <b id="coins">0</b></div>
         <div class="clock-row"><canvas id="clock-face" width="128" height="128"></canvas><div class="clock" id="clock"></div></div>
       </div>
 
       <div class="hunger" title="飽食度（全紅代表很飽，不飽要去廚房吃東西）">
-        <span class="hunger-label">飽食</span>
+        <span class="hunger-label" id="hunger-label">飽食</span>
         <div class="hunger-track"><div class="hunger-fill" id="hunger"></div></div>
       </div>
 
-      <div class="levels" id="levels" aria-label="關卡"><span>關卡</span></div>
+      <div class="levels" id="levels" aria-label="關卡"><span id="levels-label">關卡</span></div>
 
       <div class="energy"><div class="energy-fill" id="energy"></div></div>
 
       <div class="stats">
         <div class="speed"><span id="speed">0</span><small>km/h</small></div>
-        <div class="state">離地 <span id="gap">0.9</span> m · <span id="state">懸停</span></div>
+        <div class="state"><span id="gap-prefix">離地 </span><span id="gap">0.9</span> m · <span id="state">懸停</span></div>
         <div class="counters">
-          <span>擊破 <b id="kills">0</b></span>
-          <span>捕獲 <b id="caught">0</b></span>
-          <span>夥伴 <b id="allies">0</b></span>
-          <span>尖刺 <b id="spines">0</b>/30</span>
+          <span><span id="kills-label">擊破</span> <b id="kills">0</b></span>
+          <span><span id="caught-label">捕獲</span> <b id="caught">0</b></span>
+          <span><span id="allies-label">夥伴</span> <b id="allies">0</b></span>
+          <span><span id="spines-label">尖刺</span> <b id="spines">0</b>/30</span>
         </div>
       </div>
 
@@ -47,7 +54,7 @@
 
       <div class="reticle"><div class="ring"></div><div class="tag">搜尋中</div></div>
 
-      <div class="help">
+      <div class="help" id="help">
         W/↑ 加速 · S/↓ 減速 · A D 轉向 · E 推進 · Space 跳躍 · R／B 空氣砲 · T 機關槍 · N 花一萬枚前往下一關 · C 切換鏡頭 · 拖曳滑鼠 環顧 · Backspace 重置 · 數字鍵 切換關卡 · L／P 暫停 · 按住 V 慢動作 · 炸彈方塊人：L 放炸藥、在監牢按 N 自爆<br />
         手把：RT、左搖桿前推 油門 · LT、後拉 煞車 · 左右 轉向 · A 跳躍 · X 或 LB 推進 · B 空氣砲 · RB 機關槍 · View 花一萬枚前往下一關 · Y 切換鏡頭 · 右搖桿環顧 · L3／R3 上／下一關 · Menu 重置 · Xbox 鍵 暫停
       </div>
@@ -56,9 +63,17 @@
 
     <div class="leaderboard" id="leaderboard" hidden></div>
 
+    <div class="lang-modal" id="lang-modal" hidden>
+      <div class="lang-panel">
+        <div class="lang-title" id="lang-title">選擇語言</div>
+        <div class="lang-grid" id="lang-grid"></div>
+        <button type="button" class="lang-close" id="lang-close">關閉</button>
+      </div>
+    </div>
+
     <div class="chooser" id="chooser" hidden>
       <div class="chooser-panel">
-        <div class="chooser-title">選擇角色</div>
+        <div class="chooser-title" id="chooser-title">選擇角色</div>
         <div class="chooser-grid" id="chooser-grid"></div>
         <button type="button" class="chooser-ok" id="chooser-ok">確認</button>
       </div>
