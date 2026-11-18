@@ -1201,11 +1201,15 @@ function frame(timestamp) {
     return;
   }
   if (chooser.open) {
-    showRider(timestamp / 1000);
-    timer.getDelta();
-    input.endFrame();
-    requestAnimationFrame(frame);
-    return;
+    if (tvMode) {
+      chooser.confirm();
+    } else {
+      showRider(timestamp / 1000);
+      timer.getDelta();
+      input.endFrame();
+      requestAnimationFrame(frame);
+      return;
+    }
   }
   // Holding V plays the world in slow motion; the bike still answers the controls.
   const dt = Math.min(timer.getDelta(), 1 / 20) * (input.down('KeyV') ? SLOW_MO : 1);
@@ -1283,6 +1287,7 @@ function frame(timestamp) {
   // The hidden gate in the jail fence opens only for a rider rich enough to see the route.
   const seesRoute = coinCount() >= SEE_ROUTE;
   const colliders = indoors ? [] : terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
+  if (tvMode && indoors) exitHouse();
   if (tvMode && !dead && !sleeping && !indoors && war.winner == null && leaving <= 0) {
     hunger = Math.max(hunger, 0.55);
     const tv = computeTvControls({
@@ -1298,7 +1303,11 @@ function frame(timestamp) {
     for (const k of tv.hits) input.pressed.add(k);
     tvStageTimer += dt;
     if (tvStageTimer >= 16) {
-      if (STAGE < LEVEL_ORDER.length - 1) {
+      if (LOCKED) {
+        war.stage[0] = 0;
+        showAlert('📺 看電視：回到第 1 關沙漠繼續比賽', 2, 'warn');
+        leaving = 1.2;
+      } else if (STAGE < LEVEL_ORDER.length - 1) {
         war.stage[0] = STAGE + 1;
         showAlert(`📺 看電視：前往第 ${STAGE + 2} 關 ${LEVELS[LEVEL_ORDER[STAGE + 1]].name}`, 2, 'warn');
         leaving = 1.2;
@@ -1306,10 +1315,7 @@ function frame(timestamp) {
         const c = war.counts();
         war.winner = c[FRIEND].free >= c[FOE].free ? FRIEND : FOE;
         war.save();
-        setTvMode(false);
-        tvMode = false;
-        tvDown.clear();
-        syncTvUi();
+        restartIn = 6;
       }
     }
   } else {
@@ -1520,8 +1526,8 @@ function frame(timestamp) {
     }
   }
   tears?.update(dt);
-  // A draw starts over by itself; after a win the arena stays until Enter (pad Menu).
-  if (shownWinner && (input.hit('Enter') || input.hit('Backspace') || (war.winner === DRAW && finishNote && restartIn <= 0))) {
+  // A draw starts over by itself; in TV mode, restart automatically after showing the standings.
+  if (shownWinner && (input.hit('Enter') || input.hit('Backspace') || ((tvMode || (war.winner === DRAW && finishNote)) && restartIn <= 0))) {
     restartWar();
   }
 
