@@ -36,6 +36,7 @@ export class War {
     this.kills = 0; // foes the player has shot
     this.spines = []; // ids of the cacti whose spine is stuck on the player's bike
     this.pricks = new Uint8Array(this.n); // the other riders' cactus hits outside the coin jail
+    this.points = new Int32Array(this.n); // performance points per rider for final standings
     this.load();
     this.acc = 0;
     this.saveIn = 2;
@@ -64,13 +65,18 @@ export class War {
     }
     this.spines = Array.isArray(saved?.spines) ? saved.spines : [];
     if (Array.isArray(saved?.pricks) && saved.pricks.length === this.n) this.pricks.set(saved.pricks);
+    if (Array.isArray(saved?.points) && saved.points.length === this.n) this.points.set(saved.points);
+    else this.points.fill(0);
   }
 
   save() {
     let s = '';
     for (let i = 0; i < this.n; i++) s += String.fromCharCode(48 + this.stage[i]);
     try {
-      localStorage.setItem(KEY, JSON.stringify({ n: this.n, stage: s, winner: this.winner, coins: this.coins, kills: this.kills, spines: this.spines, pricks: Array.from(this.pricks) }));
+      localStorage.setItem(KEY, JSON.stringify({
+        n: this.n, stage: s, winner: this.winner, coins: this.coins, kills: this.kills,
+        spines: this.spines, pricks: Array.from(this.pricks), points: Array.from(this.points),
+      }));
     } catch {
       // private window or blocked storage: the war just does not carry over
     }
@@ -83,6 +89,7 @@ export class War {
     this.kills = 0;
     this.spines = [];
     this.pricks.fill(0);
+    this.points.fill(0);
     this.save();
   }
 
@@ -92,11 +99,13 @@ export class War {
   }
 
   // A rider was shot: next level, or jail from the last one. Returns the new stage.
-  hit(id) {
+  hit(id, shooter = -1) {
     const from = this.stage[id];
     if (from >= JAIL) return from;
     const to = from + 1;
     this.stage[id] = to;
+    this.points[id] -= 50;
+    if (shooter >= 0 && shooter < this.n && shooter !== id) this.points[shooter] += 100;
     for (const fn of this.listeners) fn(id, from, to);
     this.checkWinner();
     return to;
@@ -162,7 +171,17 @@ export class War {
       const enemies = this.team[i] === FRIEND ? foe : friend;
       if (enemies && Math.random() < OFFSCREEN_RATE * (enemies / total) * 2) shot.push(i);
     }
-    for (const i of shot) this.hit(i);
+    for (const i of shot) {
+      // Credit an off-screen enemy on the same stage with the hit
+      const s = this.stage[i];
+      const enemyTeam = this.team[i] === FRIEND ? FOE : FRIEND;
+      let shooter = -1;
+      for (let k = 0; k < 12; k++) {
+        const cand = 1 + Math.floor(Math.random() * (this.n - 1));
+        if (this.stage[cand] === s && this.team[cand] === enemyTeam) { shooter = cand; break; }
+      }
+      this.hit(i, shooter);
+    }
     for (const [i, to] of moves) this.send(i, to);
   }
 }

@@ -21,6 +21,7 @@ import { TEAM_COLOR, FRIEND, FOE } from './teams.js';
 import { formatCoinCount, coinCount, setCoins, addCoins, coinExit } from './coins.js';
 import { ExitGate } from './exit.js';
 import { War, JAIL, PENALTY } from './war.js';
+import { riderNames, renderLeaderboard } from './rankings.js';
 import { Weapons, AIR, GUN } from './weapons.js';
 import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
 import { Tears } from './tears.js';
@@ -167,6 +168,14 @@ const IN_JAIL = STAGE === JAIL;
 const IN_PENALTY = STAGE === PENALTY;
 const LOCKED = IN_JAIL || IN_PENALTY;
 const war = new War(rivals.list.map((r) => r.team), swarmCount, swarmFriends);
+const names = riderNames(war.n);
+const leaderboardEl = document.getElementById('leaderboard');
+function restartWar() {
+  war.reset();
+  setCoins(0);
+  if (LEVEL.id === 'desert') location.reload();
+  else switchLevel('desert');
+}
 war.stage[0] = STAGE; // the page you are on is where you are, picker included
 setCoins(war.coins);
 swarm.idBase = war.swarmBase;
@@ -1292,7 +1301,7 @@ function frame(timestamp) {
       const a = Math.random() * Math.PI * 2;
       dust.emit(t.x, t.y + 1, t.z, Math.cos(a) * 6, 2 + Math.random() * 5, Math.sin(a) * 6, 1.6 + Math.random() * 1.5, 1 + Math.random());
     }
-    if (!LOCKED) war.hit(t.id); // locked up, a hit only knocks the dust off
+    if (!LOCKED) war.hit(t.id, shooter); // locked up, a hit only knocks the dust off
     // A crying loser in the arena starts over somewhere else in it, still crying.
     if (arenaOn && t.group === 'swarm' && swarm.crying[t.index]) {
       swarm.confine(t.index, arenaBox);
@@ -1318,9 +1327,7 @@ function frame(timestamp) {
   }
   if (war.winner != null && !shownWinner) {
     shownWinner = true;
-    const lose = war.winner === FRIEND ? '藍隊' : '紅隊';
-    if (war.winner === DRAW) showAlert(`${finishNote}硬幣不到 ${formatCoinCount(WIN_COINS)}，平手！ 按 Enter（手把 Menu）重新開始`, 1e9, 'warn result');
-    else showAlert(`${finishNote}${war.winner === FRIEND ? '紅隊' : '藍隊'}獲勝，${lose}輸了！ 按 Enter（手把 Menu）重新開始`, 1e9, war.winner === FRIEND ? 'warn result' : 'death result');
+    renderLeaderboard(leaderboardEl, war, names, restartWar);
   }
   if (restartIn > 0) restartIn -= dt;
   // The arena: crying losers shed tears, and the nearest one sobs.
@@ -1343,10 +1350,7 @@ function frame(timestamp) {
   tears?.update(dt);
   // A draw starts over by itself; after a win the arena stays until Enter (pad Menu).
   if (shownWinner && (input.hit('Enter') || input.hit('Backspace') || (war.winner === DRAW && finishNote && restartIn <= 0))) {
-    war.reset();
-    setCoins(0);
-    if (LEVEL.id === 'desert') location.reload();
-    else switchLevel('desert');
+    restartWar();
   }
 
   // bike transform
@@ -1471,7 +1475,7 @@ window.__game = {
   getHunger: () => hunger,
   setHunger: (v) => { hunger = THREE.MathUtils.clamp(v, 0, 1); },
   isIndoors: () => indoors,
-  enterHouse, exitHouse,
+  enterHouse, exitHouse, names, leaderboardEl,
   terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins,
 };
 requestAnimationFrame(frame);
