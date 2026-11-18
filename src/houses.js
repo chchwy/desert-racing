@@ -62,6 +62,7 @@ export function addHouses(props, cx, cz, size, heightAt) {
   const roofs = new Batch(roofGeo, roofMat, { colors: true });
   const trims = new Batch(trimGeo, trimMat);
   const windows = new Batch(windowGeo, windowMat, { shadow: false });
+  props.houses = [];
   for (let i = 0; i < TRIES; i++) {
     const x = (cx + rng()) * size;
     const z = (cz + rng()) * size;
@@ -78,7 +79,9 @@ export function addHouses(props, cx, cz, size, heightAt) {
     roofs.add(x, y, z, 1, 1, 1, yaw, 0, 0, roof);
     trims.add(x, y, z, 1, 1, 1, yaw);
     windows.add(x, y, z, 1, 1, 1, yaw);
-    props.colliders.push({ x, z, r: 5.2, top: y + H + ROOF });
+    props.colliders.push({ x, z, r: 4.2, top: y + H + ROOF });
+    const seed = (Math.abs((cx * 73856093) ^ (cz * 19349663) ^ (i * 83492791)) >>> 0) + 1;
+    props.houses.push({ x, y, z, yaw, seed });
   }
   walls.build(props.group);
   roofs.build(props.group);

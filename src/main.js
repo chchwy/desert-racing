@@ -34,6 +34,7 @@ import { clock, Nightfall, skipToMorning } from './daynight.js';
 import { Ghosts } from './ghosts.js';
 import { House, drawClock } from './house.js';
 import { setWindowGlow } from './houses.js';
+import { InteriorWorld, INTERIOR_Y } from './interior.js';
 import { TntField, REACH as TNT_REACH } from './tnt.js';
 import { PrivateRain } from './privaterain.js';
 import { Dust, Ribbon, SpeedLines } from './effects.js';
@@ -407,6 +408,7 @@ const hud = {
   gap: document.getElementById('gap'),
   state: document.getElementById('state'),
   energy: document.getElementById('energy'),
+  hunger: document.getElementById('hunger'),
   fps: document.getElementById('fps'),
   kills: document.getElementById('kills'),
   caught: document.getElementById('caught'),
@@ -737,20 +739,19 @@ const SLOW_MO = 0.25;
 let paused = false;
 const exitGate = coinExit ? new ExitGate(scene, coinExit, heightAt) : null;
 
-// With HOUSE_AT coins the player pays them for a house of its own, which from then on
-// stands ahead of it on every level (inside its pen or room when locked up). By day the
-// door is shut and the house is solid. At night, once per day-and-night cycle, driving
-// in puts the player to bed: nothing can touch it, a sign over the roof says so, and
-// after SLEEP_TIME seconds it is the next morning and the night paid HOUSE_PAY. The horn
-// (C) wakes it early, with no pay, and a clock stands by the door for the rest of that
-// night. A player with no house meets ghosts at night.
+// Every house (both the player's own house and scattered houses) can be entered day or
+// night: driving through the front door teleports into a huge unique interior with
+// corridors, beds along the way, and a kitchen with a cooking chef robot.
 const HOUSE_AT = 50000;
 const HOUSE_PAY = 30000;
-const SLEEP_TIME = 20;
+const SLEEP_TIME = 10;
+const BED_PARK_TIME = 2.0;
 const HOUSE_AHEAD = 45;
-const HOUSE_DROP = 600; // metres away before it moves up ahead again
+const HOUSE_DROP = 600; // metres away before the player's house moves up ahead again
+const HUNGER_DECAY = 1 / 210; // ~3.5 minutes from full red to empty
 const HOUSE_KEY = 'desert-racing-house';
 const house = new House(scene);
+const interior = new InteriorWorld(scene);
 const ghosts = new Ghosts(scene);
 const home = { owned: false, slept: null, early: null };
 try {
@@ -766,8 +767,16 @@ function saveHome() {
   }
 }
 let sleeping = 0; // seconds left asleep; 0 awake
+let indoors = false;
+let hunger = 1; // 1 = full red (very full), 0 = hungry
+let hungryNag = 0;
+let doorCooldown = 0;
+let bedParkTimer = 0;
+let activeBed = null;
+let kitchenNoteTimer = 0;
+let outdoorReturn = { x: 0, z: 0, yaw: 0 };
 const bedLook = new THREE.Vector3();
-let houseNag = 0;
+
 // The rectangle the house has to stay in: the player's pen or room, or null.
 function houseBounds() {
   const p = player.pos;
@@ -797,72 +806,157 @@ function placeHouse() {
   for (const [dx, dz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) y = Math.max(y, terrain.floorAt(x + dx, z + dz));
   house.place(x, Math.min(y, terrain.floorAt(x, z) + 1.5), z, player.pos.x, player.pos.z);
 }
-function wakeUp() {
+
+function enterHouse(seed, retX = player.pos.x, retZ = player.pos.z, retYaw = player.yaw) {
+  indoors = true;
   sleeping = 0;
-  const out = house.doorstep();
+  bedParkTimer = 0;
+  activeBed = null;
+  kitchenNoteTimer = 0;
+  outdoorReturn = { x: retX, z: retZ, yaw: retYaw };
+  interior.build(seed);
+  interior.setVisible(true);
   player.reset();
-  player.pos.set(out.x, terrain.floorAt(out.x, out.z) + 1, out.z);
-  player.yaw = out.yaw;
+  player.pos.set(0, INTERIOR_Y + 0.9, 2);
+  player.yaw = Math.PI; // face -Z into the mansion
   chase.initialized = false;
   chase.heading = player.yaw;
-  bike.root.visible = true;
-  house.sleepSign.visible = false;
+  showAlert('進來房子了！自己開進去探索房間吧', 2.4, 'warn');
 }
-function houseStep(day, dt, time) {
+
+function exitHouse() {
+  indoors = false;
+  sleeping = 0;
+  bedParkTimer = 0;
+  if (activeBed) activeBed.sleepSign.visible = false;
+  activeBed = null;
+  bike.root.visible = true;
+  interior.setVisible(false);
+  doorCooldown = 2.0;
+  player.reset();
+  player.pos.set(outdoorReturn.x, terrain.floorAt(outdoorReturn.x, outdoorReturn.z) + 1, outdoorReturn.z);
+  player.yaw = outdoorReturn.yaw;
+  chase.initialized = false;
+  chase.heading = player.yaw;
+}
+
+function wakeUp() {
+  sleeping = 0;
+  bedParkTimer = 0;
+  if (activeBed) activeBed.sleepSign.visible = false;
+  activeBed = null;
+  bike.root.visible = true;
+  chase.initialized = false;
+  chase.heading = player.yaw;
+}
+
+function houseStep(day, dt, time, dead) {
+  doorCooldown = Math.max(doorCooldown - dt, 0);
+  kitchenNoteTimer = Math.max(kitchenNoteTimer - dt, 0);
+
+  if (indoors) {
+    if (sleeping > 0) {
+      bike.root.visible = false;
+      if (activeBed) activeBed.sleepSign.visible = true;
+      protect = Math.max(protect, 0.5);
+      if (input.hit('KeyC')) {
+        home.early = day.cycle;
+        saveHome();
+        wakeUp();
+        showAlert('叭叭！被喇叭叫醒', 2, 'warn');
+        return;
+      }
+      sleeping -= dt;
+      if (sleeping <= 0) {
+        skipToMorning();
+        const paid = home.slept !== day.cycle;
+        if (paid) {
+          home.slept = day.cycle;
+          saveHome();
+          addCoins(HOUSE_PAY);
+        }
+        chime();
+        wakeUp();
+        showAlert(paid ? '天亮了！睡飽了，賺到 3 萬枚' : '天亮了！睡飽了', 2.5, 'warn');
+      }
+      return;
+    }
+
+    // Leave through the front exit portal.
+    if (Math.hypot(player.pos.x - interior.exit.x, player.pos.z - interior.exit.z) < 2.8) {
+      exitHouse();
+      return;
+    }
+
+    // Eat in the kitchen with the chef robot.
+    if (interior.kitchen && Math.hypot(player.pos.x - interior.kitchen.x, player.pos.z - interior.kitchen.z) < 6.5) {
+      if (hunger < 0.99) {
+        hunger = 1;
+        chime();
+        showAlert('吃到廚師機器人煮的飯了！好飽！', 2.6, 'warn');
+      } else if (kitchenNoteTimer <= 0) {
+        kitchenNoteTimer = 5;
+        showAlert('這裡是廚房，現在已經很飽囉！', 2, 'warn');
+      }
+    }
+
+    // Park near any bed along the route to sleep.
+    const near = interior.nearestBed(player.pos);
+    if (near && near.dist < 5.5 && player.speed < 4.5) {
+      bedParkTimer += dt;
+      if (bedParkTimer >= BED_PARK_TIME) {
+        sleeping = SLEEP_TIME;
+        activeBed = near.bed;
+        bedParkTimer = 0;
+        player.vel.set(0, 0, 0);
+        showAlert('上床睡覺… 10 秒後天亮（按 C 喇叭可提早起床）', 3, 'warn');
+      }
+    } else {
+      bedParkTimer = 0;
+    }
+    return;
+  }
+
   if (!home.owned && coinCount() >= HOUSE_AT && deadTimer <= 0 && leaving <= 0) {
     home.owned = true;
     setCoins(coinCount() - HOUSE_AT);
     saveHome();
     placeHouse();
     chime();
-    showAlert('花 5 萬蓋好自己的房子！晚上回家睡覺', 2.5, 'warn');
+    showAlert('花 5 萬蓋好自己的房子！隨時可以開進去', 2.5, 'warn');
   }
   const ghostTouch = ghosts.update(dt, time, day.night && !home.owned && !LOCKED, player.pos, (x, z) => terrain.floorAt(x, z));
   if (ghostTouch && deadTimer <= 0 && leaving <= 0) {
     player.vel.multiplyScalar(0.3);
     crash(0.4);
-    showAlert('被幽靈嚇到了！快去存錢蓋房子', 1.8, 'warn');
+    showAlert('被幽靈嚇到了！快找房子躲進去', 1.8, 'warn');
   }
-  house.showClock(home.early === day.cycle && day.night && !sleeping ? day.hour : null);
-  if (!home.owned) return;
-  if (!house.shown || (!sleeping && house.distance(player.pos) > HOUSE_DROP)) placeHouse();
+  house.showClock(home.early === day.cycle && day.night ? day.hour : null);
 
-  if (sleeping > 0) {
-    bike.root.visible = false;
-    house.sleepSign.visible = true;
-    protect = Math.max(protect, 0.5);
-    if (input.hit('KeyC')) {
-      home.early = day.cycle;
-      saveHome();
-      wakeUp();
-      showAlert('叭叭！被喇叭叫醒，半夜出門', 2, 'warn');
+  if (home.owned && (!house.shown || house.distance(player.pos) > HOUSE_DROP)) placeHouse();
+
+  if (doorCooldown > 0 || dead || leaving > 0) return;
+
+  // Enter the player's own house through its front door.
+  if (home.owned && house.shown) {
+    const door = house.doorstep(4.5);
+    if (Math.hypot(player.pos.x - door.x, player.pos.z - door.z) < 2.6) {
+      const out = house.doorstep(7.5);
+      enterHouse(101, out.x, out.z, out.yaw);
       return;
     }
-    sleeping -= dt;
-    if (sleeping <= 0) {
-      skipToMorning();
-      addCoins(HOUSE_PAY);
-      chime();
-      wakeUp();
-      showAlert('天亮了！睡飽了，賺到 3 萬枚', 2.5, 'warn');
-    }
-    return;
   }
-  const d = house.distance(player.pos);
-  houseNag = Math.max(houseNag - dt, 0);
-  if (day.night && home.slept !== day.cycle && d < 4 && deadTimer <= 0 && leaving <= 0) {
-    home.slept = day.cycle;
-    saveHome();
-    sleeping = SLEEP_TIME;
-    player.vel.set(0, 0, 0);
-    showAlert('回家睡覺… 20 秒後天亮（按 C 喇叭可以提早出門）', 3, 'warn');
-  } else if (!day.night && d < 9 && houseNag <= 0) {
-    showAlert(`白天門鎖著，晚上才能進去（${Math.ceil(day.left)} 秒後天黑）`, 2, 'warn');
-    houseNag = 4;
+
+  // Enter any scattered house through its front door.
+  for (const h of terrain.housesNear(player.pos.x, player.pos.z)) {
+    const dx = Math.sin(h.yaw);
+    const dz = Math.cos(h.yaw);
+    if (Math.hypot(player.pos.x - (h.x + dx * 4.5), player.pos.z - (h.z + dz * 4.5)) < 2.6) {
+      enterHouse(h.seed, h.x + dx * 7.5, h.z + dz * 7.5, h.yaw);
+      return;
+    }
   }
 }
-// Open for the player at night until it has slept there; solid otherwise.
-const houseOpen = (day) => day.night && home.slept !== day.cycle;
 
 // 炸彈方塊人 walks through lava, sets 炸藥 crates down with L, and blows one up when
 // any shot (or lava) reaches it: every rider within TNT_REACH pays the player TNT_FINE.
@@ -973,6 +1067,7 @@ function frame(timestamp) {
     switchLevel(PICKER[(at + step + PICKER.length) % PICKER.length]);
   }
   if (input.hit('Backspace') && deadTimer <= 0 && !shownWinner) {
+    if (indoors) exitHouse();
     player.reset();
     rivals.regroup();
   }
@@ -983,44 +1078,66 @@ function frame(timestamp) {
   }
   grace = Math.max(grace - dt, 0);
 
+  if (!dead && !sleeping) {
+    hunger = Math.max(0, hunger - HUNGER_DECAY * dt);
+    if (hunger <= 0) player.vel.multiplyScalar(Math.max(0, 1 - 0.15 * dt));
+    if (hunger < 0.3 && !indoors) {
+      hungryNag -= dt;
+      if (hungryNag <= 0) {
+        hungryNag = 22;
+        showAlert('肚子餓了！找棟房子進去廚房吃東西', 2.5, 'warn');
+      }
+    }
+  }
+
   prevPos.copy(player.pos);
   // Ice crystals in the bike's path this frame shatter instead of stopping it.
   smashAhead.copy(player.pos).addScaledVector(player.vel, dt);
-  for (const spire of terrain.smash(player.pos, smashAhead)) {
-    if (spire.mob || spire.coin) {
-      metOutside(spire);
-      continue;
+  if (!indoors) {
+    for (const spire of terrain.smash(player.pos, smashAhead)) {
+      if (spire.mob || spire.coin) {
+        metOutside(spire);
+        continue;
+      }
+      broke(spire, player.vel);
+      player.vel.multiplyScalar(0.88);
+      player.landImpact = Math.max(player.landImpact, 0.8);
     }
-    broke(spire, player.vel);
-    player.vel.multiplyScalar(0.88);
-    player.landImpact = Math.max(player.landImpact, 0.8);
   }
-  if (IN_PENALTY) penaltyRiders(dt);
+  if (!indoors && IN_PENALTY) penaltyRiders(dt);
   // two physics substeps for stable hovering at high speed
   // The hidden gate in the jail fence opens only for a rider rich enough to see the route.
   const seesRoute = coinCount() >= SEE_ROUTE;
-  const colliders = terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
+  const colliders = indoors ? [] : terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
   const day = clock();
-  houseStep(day, dt, time);
-  tntStep();
-  if (house.shown && !houseOpen(day)) colliders.push(house.collider);
+  houseStep(day, dt, time, dead);
+  if (!indoors) tntStep();
+  if (!indoors && house.shown) colliders.push(house.collider);
+  const floorFn = indoors ? () => INTERIOR_Y : (x, z, n) => terrain.floorAt(x, z, n);
   for (let i = 0; i < 2 && !dead && !sleeping; i++) {
-    player.update(dt / 2, input, colliders, (x, z, n) => terrain.floorAt(x, z, n));
+    player.update(dt / 2, input, colliders, floorFn);
+    if (indoors) interior.collide(player.pos, player.vel);
     if (i === 0) input.pressed.delete('Space');
   }
   // A hard hit into a solid is a crash.
   if (player.bump > 8) crash(0.3 + player.bump / 30);
   player.bump = 0;
-  rivals.update(dt, time, camera.position, !dead);
-  if (!dead && inLava()) die('墜入熔岩');
-  if (TREES) {
-    if (!dead && treeHit(colliders)) crashIntoTree();
-    hud.nono.classList.toggle('show', deadTimer <= 0 && treeAhead(colliders));
+  let gained = 0;
+  if (indoors) {
+    interior.update(time);
+    if (TREES) hud.nono.classList.toggle('show', false);
+  } else {
+    rivals.update(dt, time, camera.position, !dead);
+    if (!dead && inLava()) die('墜入熔岩');
+    if (TREES) {
+      if (!dead && treeHit(colliders)) crashIntoTree();
+      hud.nono.classList.toggle('show', deadTimer <= 0 && treeAhead(colliders));
+    }
+    if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
+    if (LEVEL.cacti && !dead && war.winner == null) stickSpines(terrain.cactiTouching(prevPos, player.pos));
+    terrain.update(player.pos);
+    gained = terrain.collectCoins(prevPos, player.pos);
   }
-  if (!dead && LEVEL.sea != null && terrain.hazardHit(player.pos)) die('碰到發光生物');
-  if (LEVEL.cacti && !dead && war.winner == null) stickSpines(terrain.cactiTouching(prevPos, player.pos));
-  terrain.update(player.pos);
-  let gained = terrain.collectCoins(prevPos, player.pos);
   if (!IN_JAIL) gained += coinRain.update(dt, time, player, !dead);
   gained += privateRain.update(dt, time, player, !!chooser.current.coins && !dead && !sleeping);
   if (jailCoins) {
@@ -1218,38 +1335,46 @@ function frame(timestamp) {
   bike.update(dt, time, { throttle: player.throttle, boost: player.boost, speed: player.speed, lean: player.lean });
   bike.root.updateMatrixWorld(true);
 
-  chase.update(dt, player, time, { x: input.pad.lookX, y: input.pad.lookY }, (x, z) => terrain.floorAt(x, z));
+  chase.update(dt, player, time, { x: input.pad.lookX, y: input.pad.lookY }, indoors ? () => INTERIOR_Y : (x, z) => terrain.floorAt(x, z));
   // Asleep, the camera is inside, looking over the bed at the sign.
-  if (sleeping) {
-    house.bedroomView(camera.position, bedLook);
+  if (sleeping && activeBed) {
+    interior.bedroomView(activeBed, camera.position, bedLook);
     camera.lookAt(bedLook);
   }
 
   bike.tipWorldPositions(tips);
   trails.forEach((t, i) => t.update(tips[i], camera.position, 0.25 + player.throttle * 0.5 + player.boost * 0.6));
   emitDust(dt);
-  dust.update(dt, heightAt);
+  dust.update(dt, indoors ? () => INTERIOR_Y : heightAt);
   shatter?.update(dt);
-  finder?.update(dt, time, player, !dead);
-  coinFinder.update(time, player, !dead && !LOCKED);
-  teamFinder.update(time, player, !dead && !IN_JAIL);
+  finder?.update(dt, time, player, !dead && !indoors);
+  coinFinder.update(time, player, !dead && !LOCKED && !indoors);
+  teamFinder.update(time, player, !dead && !IN_JAIL && !indoors);
   speedLines.update(dt, player.pos, player.yaw, player.speed);
 
-  grass?.update(player.pos, camera.position, time);
-  backdrop?.update(player.pos);
-  for (const w of weather) w.update(time, camera.position);
-  for (const p of plumes) p.update(time);
-  if (eruption) {
-    const e = eruption.update(dt, time, player.pos, player.vel, camera.position, !dead && grace <= 0);
-    const d = Math.hypot(player.pos.x - VOLCANO.x, player.pos.z - VOLCANO.z);
-    if (e.erupted) {
-      if (deadTimer <= 0) showAlert('火山爆發！', 3, 'warn');
-      player.landImpact = Math.max(player.landImpact, THREE.MathUtils.clamp(1.2 - d / 3000, 0.15, 0.9));
+  if (!indoors) {
+    grass?.update(player.pos, camera.position, time);
+    backdrop?.update(player.pos);
+    for (const w of weather) {
+      w.points.visible = true;
+      w.update(time, camera.position);
     }
-    // the ground keeps rumbling while the column climbs
-    if (eruption.t < 6 && !dead) player.landImpact = Math.max(player.landImpact, 0.25 * (1 - eruption.t / 6));
-    if (e.near < 60 && !dead) player.landImpact = Math.max(player.landImpact, 0.6 * (1 - e.near / 60));
-    if (e.hit && deadTimer <= 0) die('被火山彈擊中');
+    for (const p of plumes) p.update(time);
+    if (eruption) {
+      const e = eruption.update(dt, time, player.pos, player.vel, camera.position, !dead && grace <= 0);
+      const d = Math.hypot(player.pos.x - VOLCANO.x, player.pos.z - VOLCANO.z);
+      if (e.erupted) {
+        if (deadTimer <= 0) showAlert('火山爆發！', 3, 'warn');
+        player.landImpact = Math.max(player.landImpact, THREE.MathUtils.clamp(1.2 - d / 3000, 0.15, 0.9));
+      }
+      // the ground keeps rumbling while the column climbs
+      if (eruption.t < 6 && !dead) player.landImpact = Math.max(player.landImpact, 0.25 * (1 - eruption.t / 6));
+      if (e.near < 60 && !dead) player.landImpact = Math.max(player.landImpact, 0.6 * (1 - e.near / 60));
+      if (e.hit && deadTimer <= 0) die('被火山彈擊中');
+    }
+    fish?.update(dt, time, player.pos, player.yaw);
+  } else {
+    for (const w of weather) w.points.visible = false;
   }
   if (alertTimer > 0) {
     alertTimer -= dt;
@@ -1257,11 +1382,21 @@ function frame(timestamp) {
   }
   groundUniforms.uTime.value = time;
   swellUniforms.uTime.value = time;
-  fish?.update(dt, time, player.pos, player.yaw);
 
   nightfall.reset();
-  sea?.update(time, camera);
-  nightfall.apply(day.dark);
+  if (indoors) {
+    sky.visible = false;
+    if (sea) sea.mesh.visible = false;
+    scene.fog.near = 60;
+    scene.fog.far = 220;
+    scene.fog.color.setHex(0x282018);
+    renderer.toneMappingExposure = 1.05;
+  } else {
+    sky.visible = true;
+    if (sea) sea.mesh.visible = true;
+    sea?.update(time, camera);
+    nightfall.apply(day.dark);
+  }
   house.update(day.dark);
   setWindowGlow(day.dark);
   sky.position.copy(camera.position);
@@ -1289,6 +1424,7 @@ function frame(timestamp) {
     const mm = String(Math.floor((day.hour % 1) * 60)).padStart(2, '0');
     hud.clock.textContent = `${day.night ? '🌙 晚上' : '☀️ 白天'} ${hh}:${mm} · ${m}:${sec} 後${day.night ? '天亮' : '天黑'}`;
     hud.energy.style.transform = `scaleX(${player.energy.toFixed(3)})`;
+    hud.hunger.style.transform = `scaleX(${hunger.toFixed(3)})`;
   }
   if (fpsAcc > 1) {
     // 擊破: foes you shot; 捕獲: foes in jail; 夥伴: friends still free.
@@ -1305,5 +1441,12 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
 }
 
-window.__game = { player, bike, house, ghosts, setCoins, coinCount, terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins };
+window.__game = {
+  player, bike, house, interior, ghosts, setCoins, coinCount,
+  getHunger: () => hunger,
+  setHunger: (v) => { hunger = THREE.MathUtils.clamp(v, 0, 1); },
+  isIndoors: () => indoors,
+  enterHouse, exitHouse,
+  terrain, chase, camera, renderer, input, eruption, rivals, coinRain, swarm, war, weapons, route, jailCoins,
+};
 requestAnimationFrame(frame);

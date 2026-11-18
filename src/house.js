@@ -120,9 +120,6 @@ export class House {
       add(new THREE.BoxGeometry(1.5, 1.3, 0.1), this.glow, sx * 2.6, 2.6, D / 2 + 0.03);
       add(new THREE.BoxGeometry(1.7, 0.12, 0.2), trim, sx * 2.6, 1.9, D / 2 + 0.08);
     }
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(3, 0.94), new THREE.MeshBasicMaterial({ map: sign('晚上回家睡覺', 256, '#5a3418', '#ffe9a8'), toneMapped: false }));
-    plate.position.set(0, 3.85, D / 2 + 0.06);
-    this.root.add(plate);
 
     // The room inside, seen only from in there; setInterior furnishes it per house.
     this.interior = new THREE.Group();
@@ -155,7 +152,7 @@ export class House {
     this.lamp = new THREE.PointLight(0xffb060, 0, 30, 1.5);
     this.lamp.position.set(0, 2.5, D / 2 + 2);
     this.root.add(this.lamp);
-    this.collider = { x: 0, z: 0, r: 5.2, top: H + ROOF };
+    this.collider = { x: 0, z: 0, r: 4.2, top: H + ROOF };
   }
 
   get shown() {
@@ -287,8 +284,8 @@ export class House {
   }
 
   update(dark) {
-    this.glow.emissiveIntensity = 0.1 + dark * 3;
-    this.lamp.intensity = dark * 40;
-    this.hinge.rotation.y = -dark * 1.4;
+    this.glow.emissiveIntensity = 0.5 + dark * 2.6;
+    this.lamp.intensity = 8 + dark * 32;
+    this.hinge.rotation.y = -1.4;
   }
 }

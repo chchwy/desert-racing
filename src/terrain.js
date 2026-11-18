@@ -730,6 +730,20 @@ export class Terrain {
     }
     return out;
   }
+
+  // Scattered houses in the 3x3 chunks around a point.
+  housesNear(x, z) {
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    const out = [];
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const chunk = this.chunks.get(this.key(cx + dx, cz + dz));
+        if (chunk?.props.houses) out.push(...chunk.props.houses);
+      }
+    }
+    return out;
+  }
 }
 
 // Far mountains for the snow level: a low-res ring of the same height field from just
