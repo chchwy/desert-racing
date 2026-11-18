@@ -235,6 +235,41 @@ html, body {
 }
 .tv-badge[hidden] { display: none; }
 
+.car-btn { display: inline-flex; align-items: center; justify-content: center; }
+.car-btn:hover { background: rgba(230, 160, 40, 0.75); }
+
+.car-modal {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 20px; box-sizing: border-box; pointer-events: auto;
+  background: rgba(12, 16, 24, 0.68); backdrop-filter: blur(5px); z-index: 25;
+}
+.car-modal[hidden] { display: none; }
+.car-panel {
+  width: min(520px, 100%); padding: 22px; border-radius: 16px; color: #fff;
+  display: flex; flex-direction: column; gap: 16px;
+  background: rgba(22, 28, 42, 0.96); border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.car-title { font-size: 22px; font-weight: 700; text-align: center; letter-spacing: 0.1em; color: #ffe588; }
+.car-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.car-card {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px;
+  border-radius: 12px; cursor: pointer; font: inherit; font-size: 14px; color: #fff;
+  background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.2);
+}
+.car-card:hover { background: rgba(255, 255, 255, 0.16); }
+.car-card.active { border-color: #ffd34d; background: rgba(140, 100, 20, 0.55); box-shadow: 0 0 10px rgba(255, 211, 77, 0.5); }
+.car-icon { font-size: 28px; line-height: 1.1; }
+.car-actions { display: flex; justify-content: center; gap: 14px; }
+.car-actions[hidden] { display: none; }
+.car-done, .car-undone {
+  padding: 10px 30px; border: none; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 700; letter-spacing: 0.12em;
+}
+.car-done { color: #162a10; background: linear-gradient(#9af582, #4cd964); box-shadow: 0 4px 12px rgba(76, 217, 100, 0.45); }
+.car-undone { color: #fff; background: rgba(220, 70, 60, 0.85); border: 1px solid rgba(255, 160, 150, 0.5); }
+.car-done:hover, .car-undone:hover { filter: brightness(1.08); }
+
 .lang-modal {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
   padding: 20px; box-sizing: border-box; pointer-events: auto;

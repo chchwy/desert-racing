@@ -24,6 +24,7 @@ import { War, JAIL, PENALTY } from './war.js';
 import { riderNames, renderLeaderboard } from './rankings.js';
 import { LANGUAGES, getLang, setLang, t, dict } from './i18n.js';
 import { isTvMode, setTvMode, computeTvControls } from './tv.js';
+import { CAR_TYPES } from './cars.js';
 import { nearestCoin } from './coins.js';
 import { Weapons, AIR, GUN } from './weapons.js';
 import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
@@ -499,6 +500,52 @@ tvBtn.addEventListener('click', () => {
   }
 });
 syncTvUi();
+
+// Car selector modal (opened by the car button next to the screwdriver)
+const CAR_KEY = 'desert-racing-car';
+let currentCar = 'hover';
+try {
+  const savedCar = localStorage.getItem(CAR_KEY);
+  if (savedCar && CAR_TYPES.some((c) => c.id === savedCar)) currentCar = savedCar;
+} catch {}
+bike.setCar(currentCar);
+
+const carModal = document.getElementById('car-modal');
+const carGrid = document.getElementById('car-grid');
+const carActions = document.getElementById('car-actions');
+const carCards = CAR_TYPES.map((c) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'car-card';
+  btn.dataset.car = c.id;
+  btn.innerHTML = `<span class="car-icon">${c.icon}</span><span>${c.name}</span>`;
+  btn.addEventListener('click', () => {
+    currentCar = c.id;
+    bike.setCar(currentCar);
+    try { localStorage.setItem(CAR_KEY, currentCar); } catch {}
+    carCards.forEach((b) => b.classList.toggle('active', b.dataset.car === currentCar));
+    carActions.hidden = false;
+  });
+  carGrid.appendChild(btn);
+  return btn;
+});
+document.getElementById('car-btn').addEventListener('click', () => {
+  carCards.forEach((b) => b.classList.toggle('active', b.dataset.car === currentCar));
+  carActions.hidden = true; // require clicking a car first before "已完成" appears
+  carModal.hidden = false;
+});
+document.getElementById('car-done').addEventListener('click', () => {
+  carModal.hidden = true;
+});
+document.getElementById('car-undone').addEventListener('click', () => {
+  // Hide "已完成 / 未完成" so the player can pick another car again
+  carActions.hidden = true;
+  carCards.forEach((b) => b.classList.remove('active'));
+});
+carModal.addEventListener('click', (e) => {
+  if (e.target === carModal) carModal.hidden = true;
+});
+
 applyLanguage();
 addEventListener('keydown', (e) => {
   const i = e.code.startsWith('Digit') ? Number(e.code.slice(5)) - 1 : -1;

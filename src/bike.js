@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildCatRider } from './riders/cat.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { flagParts, FLAG_MOUNT } from './teams.js';
+import { buildCarChassis } from './cars.js';
 
 // Local space: +Z forward, +Y up, +X left.
 
@@ -251,13 +252,17 @@ export class Bike {
     this.tilt = new THREE.Group(); // pitch / roll / hover bob
     this.root.add(this.tilt);
     const body = this.tilt;
+    this.hoverHull = new THREE.Group();
+    body.add(this.hoverHull);
+    this.carShell = new THREE.Group();
+    body.add(this.carShell);
 
     // central hull
     const capsule = (r, l) => new THREE.CapsuleGeometry(r, l, 8, 20);
-    mesh(capsule(0.5, 2.0), hullMat, body, { p: [0, 0.55, 0.1], r: [Math.PI / 2, 0, 0], s: [0.85, 1, 0.7] });
-    mesh(capsule(0.32, 1.1), trimMat, body, { p: [0, 0.2, 0.4], r: [Math.PI / 2, 0, 0], s: [1.2, 1, 0.6] });
+    mesh(capsule(0.5, 2.0), hullMat, this.hoverHull, { p: [0, 0.55, 0.1], r: [Math.PI / 2, 0, 0], s: [0.85, 1, 0.7] });
+    mesh(capsule(0.32, 1.1), trimMat, this.hoverHull, { p: [0, 0.2, 0.4], r: [Math.PI / 2, 0, 0], s: [1.2, 1, 0.6] });
     // seat spine
-    mesh(new THREE.BoxGeometry(0.34, 0.12, 1.2), trimMat, body, { p: [0, 0.92, -0.35] });
+    mesh(new THREE.BoxGeometry(0.34, 0.12, 1.2), trimMat, this.hoverHull, { p: [0, 0.92, -0.35] });
 
     // The player's bike only: a small pyramid point on the nose and a bunch of spikes
     // out the back. A rider that runs into the spikes pays (see SPIKE_FINE in main.js).
@@ -278,29 +283,30 @@ export class Bike {
     }
     // under-hull legs / skids
     for (const sx of [-1, 1]) {
-      mesh(capsule(0.12, 0.8), hullMat, body, { p: [sx * 0.35, 0.05, 0.8], r: [0.6, 0, sx * 0.3] });
-      mesh(capsule(0.1, 0.6), hullMat, body, { p: [sx * 0.45, -0.1, -0.7], r: [-0.5, 0, sx * 0.4] });
+      mesh(capsule(0.12, 0.8), hullMat, this.hoverHull, { p: [sx * 0.35, 0.05, 0.8], r: [0.6, 0, sx * 0.3] });
+      mesh(capsule(0.1, 0.6), hullMat, this.hoverHull, { p: [sx * 0.45, -0.1, -0.7], r: [-0.5, 0, sx * 0.4] });
     }
     // rear blades
     const blade = new THREE.BoxGeometry(0.05, 0.5, 1.5);
     for (const sx of [-1, 1]) {
-      mesh(blade, hullMat, body, { p: [sx * 0.25, 1.0, -1.25], r: [0.45, sx * 0.12, sx * 0.35] });
+      mesh(blade, hullMat, this.hoverHull, { p: [sx * 0.25, 1.0, -1.25], r: [0.45, sx * 0.12, sx * 0.35] });
     }
     // purple veins along the hull
     const vein = new THREE.BoxGeometry(0.025, 0.025, 1.8);
     for (const sx of [-1, 1]) {
-      mesh(vein, veins, body, { p: [sx * 0.43, 0.6, 0.15], r: [0.05, sx * 0.04, 0] });
-      mesh(vein, veins, body, { p: [sx * 0.3, 0.3, 0.35], s: [1, 1, 0.6], r: [-0.1, 0, 0] });
+      mesh(vein, veins, this.hoverHull, { p: [sx * 0.43, 0.6, 0.15], r: [0.05, sx * 0.04, 0] });
+      mesh(vein, veins, this.hoverHull, { p: [sx * 0.3, 0.3, 0.35], s: [1, 1, 0.6], r: [-0.1, 0, 0] });
     }
     // struts to the thrusters
     for (const sx of [-1, 1]) {
-      mesh(new THREE.BoxGeometry(0.6, 0.18, 0.5), trimMat, body, { p: [sx * 0.7, 0.62, -0.3] });
+      mesh(new THREE.BoxGeometry(0.6, 0.18, 0.5), trimMat, this.hoverHull, { p: [sx * 0.7, 0.62, -0.3] });
     }
 
     this.thrusters = [new Thruster(body, 1.15, 0.7, -0.3, 0, lights), new Thruster(body, -1.15, 0.7, -0.3, 3.3, lights)];
 
-    this.rider = rider(body);
-    this.seat = body;
+    this.seat = new THREE.Group();
+    body.add(this.seat);
+    this.rider = rider(this.seat);
 
     this.flag = null;
     if (flag) {
@@ -321,6 +327,20 @@ export class Bike {
   setRider(build) {
     this.rider.removeFromParent();
     this.rider = build(this.seat);
+  }
+
+  setCar(carId) {
+    while (this.carShell.children.length > 0) this.carShell.remove(this.carShell.children[0]);
+    const isHover = !carId || carId === 'hover';
+    this.hoverHull.visible = isHover;
+    for (const t of this.thrusters) t.root.visible = isHover;
+    if (isHover) {
+      this.seat.position.y = 0;
+      return;
+    }
+    const built = buildCarChassis(carId);
+    this.carShell.add(built.group);
+    this.seat.position.y = built.riderY;
   }
 
   setSpines(n) {
