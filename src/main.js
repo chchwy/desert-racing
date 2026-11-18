@@ -23,6 +23,8 @@ import { ExitGate } from './exit.js';
 import { War, JAIL, PENALTY } from './war.js';
 import { riderNames, renderLeaderboard } from './rankings.js';
 import { LANGUAGES, getLang, setLang, t, dict } from './i18n.js';
+import { isTvMode, setTvMode, computeTvControls } from './tv.js';
+import { nearestCoin } from './coins.js';
 import { Weapons, AIR, GUN } from './weapons.js';
 import { penBounds, PENS, JailCoins, RouteOverlay, ARENA } from './jail.js';
 import { Tears } from './tears.js';
@@ -353,15 +355,21 @@ function goToStage(stage) {
 }
 const demo = params.has('demo');
 const usePost = !params.has('nopost');
-if (demo) {
-  const keys = input.keys;
+let tvMode = isTvMode();
+let tvStageTimer = 0;
+let tvDown = new Set();
+{
+  const origDown = input.down.bind(input);
   input.down = (...codes) =>
     codes.some((c) => {
-      if (c === 'KeyW') return true;
-      if (c === 'KeyE') return Math.sin(timer.getElapsed() * 0.4) > 0.6;
-      if (c === 'KeyA') return Math.sin(timer.getElapsed() * 0.35) > 0.55;
-      if (c === 'KeyD') return Math.sin(timer.getElapsed() * 0.35) < -0.7;
-      return keys.has(c);
+      if (tvMode && tvDown.has(c)) return true;
+      if (demo) {
+        if (c === 'KeyW') return true;
+        if (c === 'KeyE') return Math.sin(timer.getElapsed() * 0.4) > 0.6;
+        if (c === 'KeyA') return Math.sin(timer.getElapsed() * 0.35) > 0.55;
+        if (c === 'KeyD') return Math.sin(timer.getElapsed() * 0.35) < -0.7;
+      }
+      return origDown(c);
     });
 }
 
@@ -463,6 +471,34 @@ document.getElementById('lang-close').addEventListener('click', () => {
 langModal.addEventListener('click', (e) => {
   if (e.target === langModal) langModal.hidden = true;
 });
+
+const tvBtn = document.getElementById('tv-btn');
+const tvBadge = document.getElementById('tv-badge');
+function syncTvUi() {
+  tvBtn.classList.toggle('active', tvMode);
+  tvBadge.hidden = !tvMode;
+}
+tvBtn.addEventListener('click', () => {
+  tvMode = !tvMode;
+  setTvMode(tvMode);
+  syncTvUi();
+  if (tvMode) {
+    tvStageTimer = 0;
+    if (chooser.open) chooser.confirm();
+    if (LEVEL.id !== 'desert') {
+      war.stage[0] = 0;
+      war.save();
+      switchLevel('desert');
+      return;
+    }
+    player.reset();
+    showAlert('📺 看電視模式開始！從第 1 關一路自動玩到最後一關', 2.5, 'warn');
+  } else {
+    tvDown.clear();
+    showAlert('已退出看電視模式，換你控制了！', 1.8, 'warn');
+  }
+});
+syncTvUi();
 applyLanguage();
 addEventListener('keydown', (e) => {
   const i = e.code.startsWith('Digit') ? Number(e.code.slice(5)) - 1 : -1;
@@ -1200,6 +1236,38 @@ function frame(timestamp) {
   // The hidden gate in the jail fence opens only for a rider rich enough to see the route.
   const seesRoute = coinCount() >= SEE_ROUTE;
   const colliders = indoors ? [] : terrain.collidersNear(player.pos.x, player.pos.z).filter((c) => !c.gate || !seesRoute);
+  if (tvMode && !dead && !sleeping && !indoors && war.winner == null && leaving <= 0) {
+    hunger = Math.max(hunger, 0.55);
+    const tv = computeTvControls({
+      player,
+      colliders,
+      targets: weapons.targets,
+      nearestCoin: nearestCoin(player.pos.x, player.pos.z, 6000),
+      friendTeam: FRIEND,
+      time,
+      lavaAt: LEVEL.lava ? lavaAt : null,
+    });
+    tvDown = tv.down;
+    for (const k of tv.hits) input.pressed.add(k);
+    tvStageTimer += dt;
+    if (tvStageTimer >= 16) {
+      if (STAGE < LEVEL_ORDER.length - 1) {
+        war.stage[0] = STAGE + 1;
+        showAlert(`📺 看電視：前往第 ${STAGE + 2} 關 ${LEVELS[LEVEL_ORDER[STAGE + 1]].name}`, 2, 'warn');
+        leaving = 1.2;
+      } else {
+        const c = war.counts();
+        war.winner = c[FRIEND].free >= c[FOE].free ? FRIEND : FOE;
+        war.save();
+        setTvMode(false);
+        tvMode = false;
+        tvDown.clear();
+        syncTvUi();
+      }
+    }
+  } else {
+    tvDown.clear();
+  }
   houseStep(day, dt, time, dead);
   if (!indoors) tntStep();
   if (!indoors && house.shown) colliders.push(house.collider);

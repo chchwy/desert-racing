@@ -225,6 +225,16 @@ html, body {
 .settings-btn { display: inline-flex; align-items: center; justify-content: center; }
 .settings-btn:hover { background: rgba(70, 140, 210, 0.7); }
 
+.tv-btn { display: inline-flex; align-items: center; justify-content: center; }
+.tv-btn:hover { background: rgba(60, 180, 110, 0.7); }
+.tv-btn.active { background: rgba(230, 70, 50, 0.85); border-color: #ffd34d; box-shadow: 0 0 10px rgba(255, 211, 77, 0.65); }
+.tv-badge {
+  display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; letter-spacing: 0.08em; color: #fff4c8;
+  background: rgba(180, 40, 30, 0.75); border: 1px solid rgba(255, 211, 77, 0.65);
+}
+.tv-badge[hidden] { display: none; }
+
 .lang-modal {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
   padding: 20px; box-sizing: border-box; pointer-events: auto;
