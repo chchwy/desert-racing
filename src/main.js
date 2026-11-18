@@ -22,7 +22,7 @@ import { formatCoinCount, coinCount, setCoins, addCoins, coinExit } from './coin
 import { ExitGate } from './exit.js';
 import { War, JAIL, PENALTY } from './war.js';
 import { riderNames, renderLeaderboard } from './rankings.js';
-import { LANGUAGES, getLang, setLang, t, dict } from './i18n.js';
+import { LANGUAGES, getLang, setLang, t, dict, translateAlert } from './i18n.js';
 import { isTvMode, setTvMode, computeTvControls } from './tv.js';
 import { CAR_TYPES } from './cars.js';
 import { nearestCoin } from './coins.js';
@@ -420,6 +420,9 @@ PICKER.forEach((id, i) => {
   levelBtns.push({ id, i, btn });
 });
 
+let alertTimer = 0;
+let hudTimer = 0;
+
 function applyLanguage() {
   const d = dict();
   document.documentElement.lang = getLang();
@@ -441,7 +444,20 @@ function applyLanguage() {
   document.getElementById('settings-btn').title = t('settings');
   document.getElementById('lang-title').textContent = t('langTitle');
   document.getElementById('lang-close').textContent = t('close');
+  document.getElementById('car-btn').title = t('carBtnTitle');
+  document.getElementById('car-title').textContent = t('carTitle');
+  document.getElementById('car-done').textContent = t('carDone');
+  document.getElementById('car-undone').textContent = t('carUndone');
+  carCards.forEach((b) => {
+    const label = b.querySelector('.car-name');
+    if (label) label.textContent = d.cars?.[b.dataset.car] ?? b.dataset.car;
+  });
+  document.getElementById('tv-btn').title = t('tvBtnTitle');
+  document.getElementById('tv-badge').textContent = t('tvBadge');
+  if (reticleTag && (reticleTag.textContent === '搜尋中' || !finder)) reticleTag.textContent = t('searching');
   chooser.refreshLabels();
+  hudTimer = 0;
+  if (alertTimer > 0 && hud.alert.textContent) hud.alert.textContent = translateAlert(hud.alert.textContent);
   if (!leaderboardEl.hidden) renderLeaderboard(leaderboardEl, war, names, restartWar);
 }
 
@@ -518,7 +534,7 @@ const carCards = CAR_TYPES.map((c) => {
   btn.type = 'button';
   btn.className = 'car-card';
   btn.dataset.car = c.id;
-  btn.innerHTML = `<span class="car-icon">${c.icon}</span><span>${c.name}</span>`;
+  btn.innerHTML = `<span class="car-icon">${c.icon}</span><span class="car-name">${c.name}</span>`;
   btn.addEventListener('click', () => {
     currentCar = c.id;
     bike.setCar(currentCar);
@@ -574,9 +590,8 @@ const hud = {
 };
 
 // A big centered line: eruption warnings and the death message.
-let alertTimer = 0;
 function showAlert(text, seconds, kind) {
-  hud.alert.textContent = text;
+  hud.alert.textContent = translateAlert(text);
   hud.alert.className = `alert show ${kind}`;
   alertTimer = seconds;
 }
@@ -590,7 +605,6 @@ const nozzles = [new THREE.Vector3(), new THREE.Vector3()];
 let emitAcc = 0;
 let fpsAcc = 0;
 let fpsFrames = 0;
-let hudTimer = 0;
 
 function emitDust(dt) {
   const speed = player.speed;
@@ -1622,7 +1636,7 @@ function frame(timestamp) {
     hudTimer = 0.08;
     hud.speed.textContent = Math.round(player.speed * 3.6);
     hud.gap.textContent = player.gap.toFixed(1);
-    hud.state.textContent = player.stateLabel;
+    hud.state.textContent = dict().states?.[player.stateLabel] ?? player.stateLabel;
     const m = Math.floor(day.left / 60);
     const sec = String(Math.floor(day.left % 60)).padStart(2, '0');
     drawClock(hud.clockFace, day.hour);
